@@ -124,7 +124,10 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  const storyData = JSON.parse(response.text ?? "{}");
+  let rawText = response.text ?? "{}";
+  // Strip markdown code fences if Gemini wraps the JSON
+  rawText = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const storyData = JSON.parse(rawText);
 
   // 2. Build full Page objects from Gemini response
   function toPage(raw: Record<string, unknown>): Page {

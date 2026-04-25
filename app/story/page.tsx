@@ -2,7 +2,8 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { getReadingOrder, type Story, type Page } from "../lib/stories";
+import { getReadingOrder, PYRAMIDS_STORY, TORNADO_STORY, type Story, type Page } from "../lib/stories";
+import { NarratorChat } from "../components/narrator-chat";
 
 const PLACEHOLDER_GRADIENTS = [
   "from-sky-300 to-cyan-500",
@@ -22,8 +23,16 @@ export default function StoryPage() {
   const narratorId = searchParams.get("narrator") ?? "mouse";
   const topic = searchParams.get("topic") ?? "tornadoes";
 
-  const [story, setStory] = useState<Story | null>(null);
-  const [generating, setGenerating] = useState(true);
+  // USE_HARDCODED: set to true for fast testing, false for Gemini generation
+  const USE_HARDCODED = true;
+
+  const hardcodedStory: Story = {
+    ...(topic.toLowerCase().includes("pyramid") ? PYRAMIDS_STORY : TORNADO_STORY),
+    narrator: { type: "animal", character: narratorId as "mouse" | "rabbit" | "owl", voice_id: "" },
+  };
+
+  const [story, setStory] = useState<Story | null>(USE_HARDCODED ? hardcodedStory : null);
+  const [generating, setGenerating] = useState(!USE_HARDCODED);
   const [error, setError] = useState<string | null>(null);
 
   const [pageIndex, setPageIndex] = useState(0);
@@ -32,8 +41,9 @@ export default function StoryPage() {
   const [loading, setLoading] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Fetch story from /api/generate
+  // Fetch story from /api/generate (skipped when USE_HARDCODED is true)
   useEffect(() => {
+    if (USE_HARDCODED) return;
     let cancelled = false;
 
     async function generate() {
@@ -150,8 +160,17 @@ export default function StoryPage() {
     setPageIndex(0);
   }
 
+  const VOICE_IDS: Record<string, string> = {
+    mouse: process.env.NEXT_PUBLIC_MOUSE_VOICE_ID ?? "dfZGXKiIzjizWtJ0NgPy",
+    rabbit: process.env.NEXT_PUBLIC_RABBIT_VOICE_ID ?? "vGQNBgLaiM3EdZtxIiuY",
+    owl: process.env.NEXT_PUBLIC_OWL_VOICE_ID ?? "XsmrVB66q3D4TaXVaWNF",
+  };
+
   const narratorLabel =
     narratorId === "mouse" ? "\ud83d\udc2d Milo" : narratorId === "owl" ? "\ud83e\udd89 Oliver" : "\ud83d\udc30 Rosie";
+
+  const narratorName =
+    narratorId === "mouse" ? "Milo the Mouse" : narratorId === "owl" ? "Oliver the Owl" : "Rosie the Rabbit";
 
   // Loading state
   if (generating) {
@@ -297,6 +316,15 @@ export default function StoryPage() {
           )}
         </div>
       </main>
+
+      {/* Narrator Chat - floating mic button */}
+      <NarratorChat
+        narratorId={narratorId}
+        voiceId={VOICE_IDS[narratorId] ?? VOICE_IDS.mouse}
+        topic={topic}
+        currentNarration={currentPage.narration}
+        narratorName={narratorName}
+      />
     </div>
   );
 }
