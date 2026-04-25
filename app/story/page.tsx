@@ -57,7 +57,7 @@ export default function StoryPage() {
       const res = await fetch("/api/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: currentPage.narration }),
+        body: JSON.stringify({ text: currentPage.narration, narrator: narratorId }),
       });
 
       const blob = await res.blob();
@@ -105,7 +105,7 @@ export default function StoryPage() {
   if (!currentPage) return null;
 
   const narratorLabel =
-    narratorId === "fox" ? "\ud83e\udd8a Fiona" : narratorId === "owl" ? "\ud83e\udd89 Oliver" : "\ud83d\udc3b Bruno";
+    narratorId === "mouse" ? "\ud83d\udc2d Milo" : narratorId === "owl" ? "\ud83e\udd89 Oliver" : "\ud83d\udc30 Rosie";
 
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-b from-sky-50 to-indigo-50">

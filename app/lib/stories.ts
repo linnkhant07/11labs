@@ -22,7 +22,7 @@ export interface Story {
   topic: string;
   narrator: {
     type: "animal" | "custom";
-    character: "fox" | "owl" | "bear" | "custom";
+    character: "mouse" | "rabbit" | "owl" | "custom";
     voice_id: string;
   };
   pages: Page[];

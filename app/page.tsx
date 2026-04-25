@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 const NARRATORS = [
-  { id: "fox", emoji: "\ud83e\udd8a", name: "Fiona the Fox", color: "from-orange-400 to-amber-500" },
+  { id: "mouse", emoji: "\ud83d\udc2d", name: "Milo the Mouse", color: "from-gray-400 to-slate-500" },
+  { id: "rabbit", emoji: "\ud83d\udc30", name: "Rosie the Rabbit", color: "from-pink-400 to-rose-500" },
   { id: "owl", emoji: "\ud83e\udd89", name: "Oliver the Owl", color: "from-indigo-400 to-purple-500" },
-  { id: "bear", emoji: "\ud83d\udc3b", name: "Bruno the Bear", color: "from-amber-600 to-yellow-700" },
 ] as const;
 
 const TOPICS = [
