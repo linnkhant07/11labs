@@ -4,24 +4,32 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 const NARRATORS = [
-  { id: "mouse", emoji: "\ud83d\udc2d", name: "Milo the Mouse", color: "from-gray-400 to-slate-500" },
-  { id: "rabbit", emoji: "\ud83d\udc30", name: "Rosie the Rabbit", color: "from-pink-400 to-rose-500" },
-  { id: "owl", emoji: "\ud83e\udd89", name: "Oliver the Owl", color: "from-indigo-400 to-purple-500" },
+  { id: "mouse", emoji: "\ud83d\udc2d", name: "Milo the Mouse" },
+  { id: "rabbit", emoji: "\ud83d\udc30", name: "Rosie the Rabbit" },
+  { id: "owl", emoji: "\ud83e\udd89", name: "Oliver the Owl" },
 ] as const;
 
-const TOPICS = [
-  { id: "tornadoes", emoji: "\ud83c\udf2a\ufe0f", name: "Tornadoes", available: true },
-  { id: "pyramids", emoji: "\ud83d\udea7", name: "Pyramids", available: false },
-] as const;
+const SUGGESTED_TOPICS = [
+  { emoji: "\ud83c\udf2a\ufe0f", name: "Tornadoes" },
+  { emoji: "\ud83d\udea7", name: "Pyramids" },
+  { emoji: "\ud83c\udf0b", name: "Volcanoes" },
+  { emoji: "\ud83e\udd96", name: "Dinosaurs" },
+  { emoji: "\ud83d\ude80", name: "Space" },
+  { emoji: "\ud83c\udf0a", name: "Ocean" },
+];
 
 export default function Home() {
   const router = useRouter();
   const [narrator, setNarrator] = useState<string | null>(null);
-  const [topic, setTopic] = useState<string | null>(null);
+  const [topic, setTopic] = useState("");
 
   function handleStart() {
-    if (!narrator || !topic) return;
-    router.push(`/story?topic=${topic}&narrator=${narrator}`);
+    if (!narrator || !topic.trim()) return;
+    const params = new URLSearchParams({
+      topic: topic.trim(),
+      narrator,
+    });
+    router.push(`/story?${params.toString()}`);
   }
 
   return (
@@ -37,32 +45,30 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Topic selection */}
+        {/* Topic input */}
         <div className="space-y-3">
           <h2 className="text-sm font-semibold uppercase tracking-widest text-indigo-400">
             What do you want to learn about?
           </h2>
-          <div className="grid grid-cols-2 gap-4">
-            {TOPICS.map((t) => (
+          <input
+            type="text"
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            placeholder="Type anything... tornadoes, dinosaurs, black holes..."
+            className="w-full rounded-2xl border-2 border-gray-200 bg-white px-5 py-4 text-lg text-gray-800 placeholder-gray-400 outline-none transition-all focus:border-indigo-400 focus:shadow-md"
+          />
+          <div className="flex flex-wrap gap-2">
+            {SUGGESTED_TOPICS.map((t) => (
               <button
-                key={t.id}
-                disabled={!t.available}
-                onClick={() => setTopic(t.id)}
-                className={`relative rounded-2xl border-2 p-6 text-center transition-all ${
-                  !t.available
-                    ? "cursor-not-allowed border-gray-200 bg-gray-50 opacity-50"
-                    : topic === t.id
-                      ? "border-indigo-500 bg-indigo-50 shadow-lg scale-[1.02]"
-                      : "border-gray-200 bg-white hover:border-indigo-300 hover:shadow-md"
+                key={t.name}
+                onClick={() => setTopic(t.name)}
+                className={`rounded-full border px-3 py-1.5 text-sm transition-all ${
+                  topic === t.name
+                    ? "border-indigo-400 bg-indigo-50 text-indigo-700"
+                    : "border-gray-200 bg-white text-gray-600 hover:border-indigo-300"
                 }`}
               >
-                <span className="text-4xl">{t.emoji}</span>
-                <p className="mt-2 font-semibold text-gray-800">{t.name}</p>
-                {!t.available && (
-                  <span className="absolute top-2 right-2 rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-bold uppercase text-gray-500">
-                    Soon
-                  </span>
-                )}
+                {t.emoji} {t.name}
               </button>
             ))}
           </div>
@@ -94,9 +100,9 @@ export default function Home() {
         {/* Start button */}
         <button
           onClick={handleStart}
-          disabled={!narrator || !topic}
+          disabled={!narrator || !topic.trim()}
           className={`w-full rounded-full py-4 text-lg font-bold transition-all ${
-            narrator && topic
+            narrator && topic.trim()
               ? "bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg hover:shadow-xl hover:scale-[1.01]"
               : "bg-gray-200 text-gray-400 cursor-not-allowed"
           }`}
