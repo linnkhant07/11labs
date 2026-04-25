@@ -71,11 +71,24 @@ function base64ToUint8(base64: string): Uint8Array {
   return bytes;
 }
 
+export interface ClientToolDeclaration {
+  name: string;
+  description: string;
+  parameters: {
+    type: "object";
+    properties: Record<string, { type: string; description?: string }>;
+    required?: string[];
+  };
+  expects_response?: boolean;
+}
+
 interface UseConversationalPttOptions {
   agentId?: string;
   inputGain?: number;
+  clientTools?: ClientToolDeclaration[];
   onUserTranscript?: (text: string) => void;
   onAgentTranscript?: (text: string) => void;
+  onSocketEvent?: (event: { type: string; detail?: string }) => void;
   onToolCall?: (toolCall: {
     toolName: string;
     toolCallId: string;
@@ -95,7 +108,20 @@ function getPreferredBuiltInMicId(devices: MediaDeviceInfo[]): string | null {
 }
 
 export function useConversationalPtt(options: UseConversationalPttOptions = {}) {
-  const { agentId, inputGain = 2, onUserTranscript, onAgentTranscript, onToolCall } = options;
+  const {
+    agentId,
+    inputGain = 2,
+    clientTools,
+    onUserTranscript,
+    onAgentTranscript,
+    onSocketEvent,
+    onToolCall,
+  } = options;
+
+  const clientToolsRef = useRef<ClientToolDeclaration[] | undefined>(clientTools);
+  useEffect(() => {
+    clientToolsRef.current = clientTools;
+  }, [clientTools]);
 
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
@@ -255,17 +281,54 @@ export function useConversationalPtt(options: UseConversationalPttOptions = {}) 
 
       const ws = new WebSocket(payload.signedUrl);
       wsRef.current = ws;
+      onSocketEvent?.({ type: "ws_created" });
 
-      ws.onopen = () => {
-        setIsConnected(true);
-        setIsConnecting(false);
-        isConnectedRef.current = true;
-        isConnectingRef.current = false;
-        ws.send(JSON.stringify({ type: "conversation_initiation_client_data" }));
-      };
+      const wsReady = new Promise<void>((resolve, reject) => {
+        const timeout = window.setTimeout(() => {
+          reject(new Error("WebSocket open timeout"));
+        }, 8000);
+
+        ws.onopen = () => {
+          window.clearTimeout(timeout);
+          setIsConnected(true);
+          setIsConnecting(false);
+          isConnectedRef.current = true;
+          isConnectingRef.current = false;
+          onSocketEvent?.({ type: "ws_open" });
+          const declaredTools = clientToolsRef.current ?? [];
+          const initPayload: Record<string, unknown> = {
+            type: "conversation_initiation_client_data",
+          };
+          if (declaredTools.length > 0) {
+            initPayload.conversation_config_override = {
+              agent: {
+                prompt: {
+                  tools: declaredTools,
+                },
+              },
+            };
+          }
+          ws.send(JSON.stringify(initPayload));
+          onSocketEvent?.({
+            type: "conversation_init_sent",
+            detail: declaredTools.length
+              ? `tools=${declaredTools.map((t) => t.name).join(",")}`
+              : "no_tools_declared",
+          });
+          resolve();
+        };
+      });
 
       ws.onmessage = async (event) => {
         const data = JSON.parse(event.data) as ConversationEvent;
+        const rawDetail =
+          typeof event.data === "string"
+            ? event.data.length > 500
+              ? `${event.data.slice(0, 500)}...`
+              : event.data
+            : undefined;
+        const detailForLog = data.type === "audio" ? undefined : rawDetail;
+        onSocketEvent?.({ type: `ws_message_${data.type}`, detail: detailForLog });
 
         if (data.type === "ping" && data.ping_event?.event_id != null) {
           ws.send(JSON.stringify({ type: "pong", event_id: data.ping_event.event_id }));
@@ -348,8 +411,12 @@ export function useConversationalPtt(options: UseConversationalPttOptions = {}) 
         }
       };
 
-      ws.onerror = () => setError("WebSocket connection error");
+      ws.onerror = () => {
+        onSocketEvent?.({ type: "ws_error" });
+        setError("WebSocket connection error");
+      };
       ws.onclose = () => {
+        onSocketEvent?.({ type: "ws_close" });
         void cleanup();
       };
 
@@ -380,15 +447,18 @@ export function useConversationalPtt(options: UseConversationalPttOptions = {}) 
 
       source.connect(processor);
       processor.connect(micContext.destination);
+      await wsReady;
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to connect";
       setError(message);
+      onSocketEvent?.({ type: "connect_error", detail: message });
       await cleanup();
     }
   }, [
     cleanup,
     inputGain,
     onAgentTranscript,
+    onSocketEvent,
     onToolCall,
     onUserTranscript,
     playPcmChunk,
@@ -416,9 +486,13 @@ export function useConversationalPtt(options: UseConversationalPttOptions = {}) 
   }, []);
 
   const sendUserMessage = useCallback((text: string) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      onSocketEvent?.({ type: "user_message_dropped", detail: "socket_not_open" });
+      return;
+    }
     wsRef.current.send(JSON.stringify({ type: "user_message", text }));
-  }, []);
+    onSocketEvent?.({ type: "user_message_sent", detail: text.slice(0, 80) });
+  }, [onSocketEvent]);
 
   useEffect(() => {
     return () => {

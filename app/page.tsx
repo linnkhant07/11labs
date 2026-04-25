@@ -1,35 +1,50 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useConversationalPtt } from "./lib/useConversationalPtt";
+import {
+  useConversationalPtt,
+  type ClientToolDeclaration,
+} from "./lib/useConversationalPtt";
 
 const NARRATORS = [
-  { id: "fox", emoji: "\ud83e\udd8a", name: "Fiona the Fox", color: "from-orange-400 to-amber-500" },
+  { id: "fox", emoji: "\ud83e\udd8a", name: "Finn the Fox", color: "from-orange-400 to-amber-500" },
   { id: "owl", emoji: "\ud83e\udd89", name: "Oliver the Owl", color: "from-indigo-400 to-purple-500" },
   { id: "bear", emoji: "\ud83d\udc3b", name: "Bruno the Bear", color: "from-amber-600 to-yellow-700" },
 ] as const;
 
 type NarratorId = (typeof NARRATORS)[number]["id"];
+type OnboardingStep = "character" | "ready";
 
-const NARRATOR_ALIASES: Record<NarratorId, string[]> = {
-  fox: ["fox", "fiona", "fiona fox"],
-  owl: ["owl", "oliver", "oliver owl"],
-  bear: ["bear", "bruno", "bruno bear"],
+const CHARACTER_ALIASES: Record<NarratorId, string[]> = {
+  fox: ["fox", "finn", "finn fox", "finn the fox", "fiona", "fiona fox"],
+  owl: ["owl", "oliver", "oliver owl", "oliver the owl"],
+  bear: ["bear", "bruno", "bruno bear", "bruno the bear"],
 };
 
-const YES_WORDS = ["yes", "yeah", "yep", "correct", "right", "sounds good"];
-const NO_WORDS = ["no", "nope", "wrong", "different", "change"];
-const NARRATOR_AGENT_IDS: Record<NarratorId, string | undefined> = {
-  fox: process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID_FOX,
-  owl: process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID_OWL,
-  bear: process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID_BEAR,
-};
-
+const CLIENT_TOOLS: ClientToolDeclaration[] = [
+  {
+    name: "select_character",
+    description:
+      "Call this when the user names the narrator they want. The character must be one of: Finn the Fox, Oliver the Owl, or Bruno the Bear. Always call this tool when the user picks — never just acknowledge verbally.",
+    parameters: {
+      type: "object",
+      properties: {
+        character: {
+          type: "string",
+          description:
+            "The name the user said. Accepts variations like 'fox', 'finn', 'finn the fox', 'owl', 'oliver', 'bear', 'bruno'.",
+        },
+      },
+      required: ["character"],
+    },
+    expects_response: true,
+  },
+];
 export default function Home() {
   const router = useRouter();
   const [narrator, setNarrator] = useState<NarratorId | null>(null);
-  const [pendingNarrator, setPendingNarrator] = useState<NarratorId | null>(null);
+  const [step, setStep] = useState<OnboardingStep>("character");
   const [agentPrompt, setAgentPrompt] = useState(
     "Press Start Voice Onboarding so I can help you choose a narrator."
   );
@@ -37,16 +52,14 @@ export default function Home() {
   const [activeAgentId] = useState<string | undefined>(
     process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID
   );
-  const pendingNarratorRef = useRef<NarratorId | null>(null);
 
   const selectedNarrator = useMemo(
     () => NARRATORS.find((n) => n.id === narrator) ?? null,
     [narrator]
   );
-
   const beginStory = useCallback(
     (chosenNarrator: NarratorId) => {
-      router.push(`/story?topic=tornadoes&narrator=${chosenNarrator}`);
+      router.push(`/story?narrator=${chosenNarrator}`);
     },
     [router]
   );
@@ -55,108 +68,23 @@ export default function Home() {
     return NARRATORS.find((n) => n.id === id)?.name ?? id;
   }, []);
 
-  const {
-    connect,
-    disconnect,
-    startTalking,
-    stopTalking,
-    sendUserMessage,
-    isConnected,
-    isConnecting,
-    error,
-    lastUserTranscript,
-    lastAgentTranscript,
-  } = useConversationalPtt({
-    agentId: activeAgentId,
-    inputGain: 2.5,
-    onUserTranscript: (transcript) => {
-      const spokenNarrator = detectNarrator(transcript);
-      const pending = pendingNarratorRef.current;
+  const pushTerminalDebug = useCallback(async (event: string, detail?: string) => {
+    await fetch("/api/debug", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event,
+        detail,
+        ts: new Date().toISOString(),
+      }),
+    }).catch(() => {
+      // Ignore debug transport failures.
+    });
+  }, []);
 
-      if (pending) {
-        if (includesAny(transcript, YES_WORDS)) {
-          setNarrator(pending);
-          setAgentPrompt(
-            `Awesome. Locking in ${narratorDisplayName(pending)} and starting your adventure.`
-          );
-          beginStory(pending);
-          return;
-        }
-        if (spokenNarrator) {
-          setPendingNarrator(spokenNarrator);
-          setAgentPrompt(
-            `Got it, switching to ${narratorDisplayName(
-              spokenNarrator
-            )}. Say yes if that's right.`
-          );
-          return;
-        }
-        if (includesAny(transcript, NO_WORDS)) {
-          setPendingNarrator(null);
-          setAgentPrompt("No problem. Say Fox, Owl, or Bear to choose your narrator.");
-          return;
-        }
-        setAgentPrompt(
-          `Please confirm. Say yes for ${narratorDisplayName(
-            pending
-          )}, or say another narrator name.`
-        );
-        return;
-      }
-
-      if (spokenNarrator) {
-        setPendingNarrator(spokenNarrator);
-        setAgentPrompt(
-          `I heard ${narratorDisplayName(
-            spokenNarrator
-          )}. Say yes to confirm, or say a different narrator.`
-        );
-        return;
-      }
-
-      setAgentPrompt("I did not catch a narrator yet. Say Fox, Owl, or Bear.");
-    },
-    onToolCall: async ({ toolName, parameters }) => {
-      if (toolName !== "select_narrator") {
-        return { result: `Unknown tool ${toolName}`, isError: true };
-      }
-
-      const narratorParam =
-        typeof parameters.narrator === "string" ? parameters.narrator.toLowerCase() : "";
-      if (!["fox", "owl", "bear"].includes(narratorParam)) {
-        return {
-          result:
-            "Invalid narrator parameter. Expected narrator one of: fox, owl, bear.",
-          isError: true,
-        };
-      }
-
-      const id = narratorParam as NarratorId;
-      const narratorAgentId =
-        NARRATOR_AGENT_IDS[id] ?? process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
-      if (!narratorAgentId) {
-        setAgentPrompt(
-          `Missing narrator agent ID for ${narratorDisplayName(
-            id
-          )}. Add NEXT_PUBLIC_ELEVENLABS_AGENT_ID_${id.toUpperCase()} or server mapping env.`
-        );
-        return { result: "Narrator agent ID missing.", isError: true };
-      }
-
-      setNarrator(id);
-      setPendingNarrator(null);
-      setAgentPrompt(`Selected ${narratorDisplayName(id)}. Starting story now...`);
-      beginStory(id);
-
-      return {
-        result: `Narrator ${id} selected and navigation started.`,
-      };
-    },
-  });
-
-  function detectNarrator(text: string): NarratorId | null {
-    const normalized = text.toLowerCase();
-    for (const [candidate, aliases] of Object.entries(NARRATOR_ALIASES) as [
+  function detectCharacter(value: string): NarratorId | null {
+    const normalized = value.toLowerCase();
+    for (const [candidate, aliases] of Object.entries(CHARACTER_ALIASES) as [
       NarratorId,
       string[],
     ][]) {
@@ -165,10 +93,69 @@ export default function Home() {
     return null;
   }
 
-  function includesAny(text: string, words: string[]): boolean {
-    const normalized = text.toLowerCase();
-    return words.some((word) => normalized.includes(word));
-  }
+  const {
+    connect,
+    connectForNarrator,
+    disconnect,
+    startTalking,
+    stopTalking,
+    isConnected,
+    isConnecting,
+    error,
+    lastUserTranscript,
+    lastAgentTranscript,
+  } = useConversationalPtt({
+    agentId: activeAgentId,
+    inputGain: 2.5,
+    clientTools: CLIENT_TOOLS,
+    onSocketEvent: ({ type, detail }) => {
+      void pushTerminalDebug(type, detail);
+    },
+    onToolCall: async ({ toolName, parameters }) => {
+      void pushTerminalDebug("tool_call_received", `${toolName} ${JSON.stringify(parameters)}`);
+      if (toolName === "select_character") {
+        const characterValue =
+          typeof parameters.character === "string" ? parameters.character : "";
+        const characterId = detectCharacter(characterValue);
+        if (!characterId) {
+          void pushTerminalDebug("character_mapping_failed", characterValue || "(empty)");
+          return {
+            result:
+              "Invalid character. Expected one of Finn the Fox, Oliver the Owl, or Bruno the Bear.",
+            isError: true,
+          };
+        }
+
+        void pushTerminalDebug("character_mapped", `${characterValue} -> ${characterId}`);
+        setNarrator(characterId);
+        setStep("ready");
+        setAgentPrompt(
+          `${narratorDisplayName(characterId)} selected. Transferring to ${narratorDisplayName(characterId)}...`
+        );
+
+        queueMicrotask(async () => {
+          try {
+            await disconnect();
+            void pushTerminalDebug("transfer_disconnected", "onboarding_agent");
+            await connectForNarrator(characterId);
+            void pushTerminalDebug("transfer_connected", `narrator=${characterId}`);
+            void pushTerminalDebug("navigation_handoff", `/story?narrator=${characterId}`);
+            beginStory(characterId);
+          } catch (transferError) {
+            const message =
+              transferError instanceof Error
+                ? transferError.message
+                : "Failed to transfer to narrator agent.";
+            void pushTerminalDebug("transfer_failed", message);
+          }
+        });
+
+        return { result: `Character selected: ${characterId}` };
+      }
+      void pushTerminalDebug("unknown_tool", toolName);
+      return { result: `Unknown tool ${toolName}`, isError: true };
+    },
+  });
 
   function selectNarratorFromCard(id: NarratorId) {
     setAgentPrompt(
@@ -178,30 +165,31 @@ export default function Home() {
     );
   }
 
-  useEffect(() => {
-    pendingNarratorRef.current = pendingNarrator;
-  }, [pendingNarrator]);
-
   async function handleStartVoice() {
     setHasStartedVoice(true);
-    setAgentPrompt("Connecting... once ready, hold the talk button and say Fox, Owl, or Bear.");
+    setStep("character");
+    setNarrator(null);
+    setAgentPrompt(
+      "Connecting... once ready, hold Cmd and speak. Agent should call select_character."
+    );
+    void pushTerminalDebug("voice_start_requested");
     const startAgentId = activeAgentId ?? process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
     if (!startAgentId) {
+      void pushTerminalDebug("missing_default_agent_id");
       setAgentPrompt(
         "Missing default agent ID. Set NEXT_PUBLIC_ELEVENLABS_AGENT_ID or narrator-specific IDs."
       );
       return;
     }
     await connect(startAgentId);
-    sendUserMessage(
-      "Ask the child to choose exactly one narrator: Fiona the Fox, Oliver the Owl, or Bruno the Bear. When decided, call tool select_narrator with { narrator: 'fox'|'owl'|'bear' }."
-    );
+    void pushTerminalDebug("connected", startAgentId);
   }
 
   const handleStopVoice = useCallback(async () => {
+    void pushTerminalDebug("voice_stop_requested");
     await disconnect();
     setAgentPrompt("Voice onboarding stopped. You can restart anytime.");
-  }, [disconnect]);
+  }, [disconnect, pushTerminalDebug]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -270,8 +258,7 @@ export default function Home() {
               <span className="font-semibold">Agent said:</span> {lastAgentTranscript || "..."}
             </p>
             <p>
-              <span className="font-semibold">Pending narrator:</span>{" "}
-              {pendingNarrator ? narratorDisplayName(pendingNarrator) : "none"}
+              <span className="font-semibold">Step:</span> {step}
             </p>
             {error ? (
               <p className="text-red-600">
@@ -288,7 +275,7 @@ export default function Home() {
 
         <div className="space-y-3">
           <h2 className="text-sm font-semibold uppercase tracking-widest text-indigo-400">
-            Narrators (voice-selected)
+            Characters (voice-selected)
           </h2>
           <div className="grid grid-cols-3 gap-4">
             {NARRATORS.map((n) => (

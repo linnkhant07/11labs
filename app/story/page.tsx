@@ -105,7 +105,7 @@ export default function StoryPage() {
   if (!currentPage) return null;
 
   const narratorLabel =
-    narratorId === "fox" ? "\ud83e\udd8a Fiona" : narratorId === "owl" ? "\ud83e\udd89 Oliver" : "\ud83d\udc3b Bruno";
+    narratorId === "fox" ? "\ud83e\udd8a Finn" : narratorId === "owl" ? "\ud83e\udd89 Oliver" : "\ud83d\udc3b Bruno";
 
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-b from-sky-50 to-indigo-50">
