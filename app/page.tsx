@@ -22,12 +22,14 @@ export default function Home() {
   const router = useRouter();
   const [narrator, setNarrator] = useState<string | null>(null);
   const [topic, setTopic] = useState("");
+  const [demoMode, setDemoMode] = useState(true);
 
   function handleStart() {
     if (!narrator || !topic.trim()) return;
     const params = new URLSearchParams({
       topic: topic.trim(),
       narrator,
+      ...(demoMode ? { demo: "1" } : {}),
     });
     router.push(`/story?${params.toString()}`);
   }
@@ -109,6 +111,25 @@ export default function Home() {
         >
           Start Your Adventure
         </button>
+
+        {/* Demo mode toggle */}
+        <div className="flex items-center justify-center gap-3">
+          <button
+            onClick={() => setDemoMode(!demoMode)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              demoMode ? "bg-indigo-500" : "bg-gray-300"
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                demoMode ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
+          </button>
+          <span className="text-sm text-gray-500">
+            {demoMode ? "Demo mode (hardcoded, no credits)" : "Live mode (Gemini generation)"}
+          </span>
+        </div>
       </div>
     </div>
   );

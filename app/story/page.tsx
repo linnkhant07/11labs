@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { getReadingOrder, type Story, type Page } from "../lib/stories";
+import { getReadingOrder, TORNADO_STORY, PYRAMIDS_STORY, type Story, type Page } from "../lib/stories";
 import { NarratorChat } from "../components/narrator-chat";
 
 const PLACEHOLDER_GRADIENTS = [
@@ -50,20 +50,26 @@ export default function StoryPage() {
   const searchParams = useSearchParams();
   const narratorId = searchParams.get("narrator") ?? "mouse";
   const topic = searchParams.get("topic") ?? "tornadoes";
+  const isDemo = searchParams.get("demo") === "1";
 
-  const [story, setStory] = useState<Story | null>(null);
-  const [generating, setGenerating] = useState(true);
+  const demoStory: Story | null = isDemo
+    ? {
+        ...(topic.toLowerCase().includes("pyramid") ? PYRAMIDS_STORY : TORNADO_STORY),
+        narrator: { type: "animal", character: narratorId as "mouse" | "rabbit" | "owl", voice_id: "" },
+      }
+    : null;
+
+  const [story, setStory] = useState<Story | null>(demoStory);
+  const [generating, setGenerating] = useState(!isDemo);
   const [error, setError] = useState<string | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
   const [branchChoices, setBranchChoices] = useState<Record<string, "a" | "b">>({});
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const [hasFinishedReading, setHasFinishedReading] = useState(false);
-  const [highlightedWordIndex, setHighlightedWordIndex] = useState(-1);
   const [nudgeText, setNudgeText] = useState<string | null>(null);
   const [chatActive, setChatActive] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const highlightInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nudgeCount = useRef(0);
 
@@ -73,6 +79,7 @@ export default function StoryPage() {
 
   // --- Story generation ---
   useEffect(() => {
+    if (isDemo) return;
     let cancelled = false;
     async function generate() {
       setGenerating(true);
@@ -103,31 +110,6 @@ export default function StoryPage() {
   const currentPage: Page | undefined = pages[pageIndex];
   const isLastPage = pageIndex === pages.length - 1 && !currentPage?.choice;
   const needsChoice = currentPage?.choice && !branchChoices[currentPage.page_id];
-  const words = useMemo(() => currentPage?.narration.split(/\s+/) ?? [], [currentPage?.narration]);
-
-  // --- Word highlighting ---
-  const stopHighlighting = useCallback(() => {
-    if (highlightInterval.current) {
-      clearInterval(highlightInterval.current);
-      highlightInterval.current = null;
-    }
-    setHighlightedWordIndex(-1);
-  }, []);
-
-  const startHighlighting = useCallback((wordCount: number, durationMs: number) => {
-    stopHighlighting();
-    const msPerWord = durationMs / wordCount;
-    let i = 0;
-    setHighlightedWordIndex(0);
-    highlightInterval.current = setInterval(() => {
-      i += 1;
-      if (i >= wordCount) {
-        stopHighlighting();
-        return;
-      }
-      setHighlightedWordIndex(i);
-    }, msPerWord);
-  }, [stopHighlighting]);
 
   // --- Audio playback ---
   const stopAudio = useCallback(() => {
@@ -136,29 +118,17 @@ export default function StoryPage() {
       audioRef.current = null;
     }
     setPlaying(false);
-    stopHighlighting();
-  }, [stopHighlighting]);
+  }, []);
 
   const playNarration = useCallback(async (page: Page) => {
     stopAudio();
     setHasFinishedReading(false);
-    const pageWords = page.narration.split(/\s+/);
 
     if (page.audio_url) {
       setPlaying(true);
       const audio = new Audio(page.audio_url);
       audioRef.current = audio;
-
-      // Start highlighting once we know the duration
-      audio.onloadedmetadata = () => {
-        startHighlighting(pageWords.length, audio.duration * 1000);
-      };
-      audio.onended = () => {
-        setPlaying(false);
-        setHasFinishedReading(true);
-        audioRef.current = null;
-        stopHighlighting();
-      };
+      audio.onended = () => { setPlaying(false); setHasFinishedReading(true); audioRef.current = null; };
       await audio.play();
       return;
     }
@@ -176,16 +146,11 @@ export default function StoryPage() {
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audioRef.current = audio;
-
-      audio.onloadedmetadata = () => {
-        startHighlighting(pageWords.length, audio.duration * 1000);
-      };
       audio.onended = () => {
         setPlaying(false);
         setHasFinishedReading(true);
         audioRef.current = null;
         URL.revokeObjectURL(url);
-        stopHighlighting();
       };
       await audio.play();
     } catch {
@@ -193,7 +158,7 @@ export default function StoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [stopAudio, narratorId, startHighlighting, stopHighlighting]);
+  }, [stopAudio, narratorId]);
 
   function handleSpeak() {
     if (playing) { stopAudio(); return; }
@@ -204,7 +169,16 @@ export default function StoryPage() {
   useEffect(() => {
     if (!currentPage || generating) return;
     setHasFinishedReading(false);
-    playNarration(currentPage);
+
+    // Delay slightly to let React strict mode cleanup run first
+    const timeout = setTimeout(() => {
+      playNarration(currentPage);
+    }, 50);
+
+    return () => {
+      clearTimeout(timeout);
+      stopAudio();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage?.page_id, generating]);
 
@@ -320,23 +294,10 @@ export default function StoryPage() {
             </p>
           </div>
 
-          {/* Narration text with word-by-word highlighting */}
+          {/* Narration text */}
           <div className="rounded-2xl bg-white p-6 md:p-8 shadow-sm border border-indigo-100">
-            <p className="text-lg leading-relaxed">
-              {words.map((word, i) => (
-                <span
-                  key={`${currentPage.page_id}-${i}`}
-                  className={`transition-colors duration-150 ${
-                    i === highlightedWordIndex
-                      ? "bg-indigo-200 text-indigo-900 rounded px-0.5"
-                      : i < highlightedWordIndex
-                        ? "text-gray-800"
-                        : "text-gray-400"
-                  }`}
-                >
-                  {word}{" "}
-                </span>
-              ))}
+            <p className="text-lg leading-relaxed text-gray-700">
+              {currentPage.narration}
             </p>
           </div>
 
