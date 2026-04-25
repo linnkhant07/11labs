@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { getReadingOrder, type Story, type Page } from "../lib/stories";
+import { NarratorChat } from "../components/narrator-chat";
 
 const PLACEHOLDER_GRADIENTS = [
   "from-sky-300 to-cyan-500",
@@ -12,6 +13,24 @@ const PLACEHOLDER_GRADIENTS = [
   "from-violet-300 to-purple-500",
   "from-rose-300 to-pink-500",
 ];
+
+const VOICE_IDS: Record<string, string> = {
+  mouse: "dfZGXKiIzjizWtJ0NgPy",
+  rabbit: "vGQNBgLaiM3EdZtxIiuY",
+  owl: "XsmrVB66q3D4TaXVaWNF",
+};
+
+const NARRATOR_NAMES: Record<string, string> = {
+  mouse: "Milo the Mouse",
+  rabbit: "Rosie the Rabbit",
+  owl: "Oliver the Owl",
+};
+
+const NARRATOR_LABELS: Record<string, string> = {
+  mouse: "\ud83d\udc2d Milo",
+  rabbit: "\ud83d\udc30 Rosie",
+  owl: "\ud83e\udd89 Oliver",
+};
 
 function getGradient(index: number) {
   return PLACEHOLDER_GRADIENTS[index % PLACEHOLDER_GRADIENTS.length];
@@ -25,14 +44,12 @@ export default function StoryPage() {
   const [story, setStory] = useState<Story | null>(null);
   const [generating, setGenerating] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [pageIndex, setPageIndex] = useState(0);
   const [branchChoices, setBranchChoices] = useState<Record<string, "a" | "b">>({});
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Fetch story from /api/generate
   useEffect(() => {
     let cancelled = false;
 
@@ -45,9 +62,7 @@ export default function StoryPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ topic, narrator: narratorId }),
         });
-
         if (!res.ok) throw new Error("Failed to generate story");
-
         const data: Story = await res.json();
         if (!cancelled) setStory(data);
       } catch (err) {
@@ -69,6 +84,10 @@ export default function StoryPage() {
   const isLastPage = pageIndex === pages.length - 1 && !currentPage?.choice;
   const needsChoice = currentPage?.choice && !branchChoices[currentPage.page_id];
 
+  const narratorLabel = NARRATOR_LABELS[narratorId] ?? NARRATOR_LABELS.mouse;
+  const narratorName = NARRATOR_NAMES[narratorId] ?? NARRATOR_NAMES.mouse;
+  const voiceId = VOICE_IDS[narratorId] ?? VOICE_IDS.mouse;
+
   const stopAudio = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -78,47 +97,37 @@ export default function StoryPage() {
   }, []);
 
   async function handleSpeak() {
-    if (playing) {
-      stopAudio();
-      return;
-    }
+    if (playing) { stopAudio(); return; }
     if (!currentPage) return;
 
-    // If we have a pre-generated audio_url (base64), use it directly
+    // Use pre-generated audio if available
     if (currentPage.audio_url) {
       setPlaying(true);
       const audio = new Audio(currentPage.audio_url);
       audioRef.current = audio;
-      audio.onended = () => {
-        setPlaying(false);
-        audioRef.current = null;
-      };
+      audio.onended = () => { setPlaying(false); audioRef.current = null; };
       await audio.play();
       return;
     }
 
-    // Fallback: call /api/speak on-demand
+    // Fallback: on-demand TTS
     setLoading(true);
     setPlaying(true);
-
     try {
       const res = await fetch("/api/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: currentPage.narration, narrator: narratorId }),
       });
-
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audioRef.current = audio;
-
       audio.onended = () => {
         setPlaying(false);
         audioRef.current = null;
         URL.revokeObjectURL(url);
       };
-
       await audio.play();
     } catch {
       setPlaying(false);
@@ -127,15 +136,8 @@ export default function StoryPage() {
     }
   }
 
-  function handleNext() {
-    stopAudio();
-    setPageIndex((i) => Math.min(i + 1, pages.length - 1));
-  }
-
-  function handlePrev() {
-    stopAudio();
-    setPageIndex((i) => Math.max(i - 1, 0));
-  }
+  function handleNext() { stopAudio(); setPageIndex((i) => Math.min(i + 1, pages.length - 1)); }
+  function handlePrev() { stopAudio(); setPageIndex((i) => Math.max(i - 1, 0)); }
 
   function handleChoice(option: "a" | "b") {
     if (!currentPage) return;
@@ -144,16 +146,8 @@ export default function StoryPage() {
     setPageIndex((i) => i + 1);
   }
 
-  function handleRestart() {
-    stopAudio();
-    setBranchChoices({});
-    setPageIndex(0);
-  }
+  function handleRestart() { stopAudio(); setBranchChoices({}); setPageIndex(0); }
 
-  const narratorLabel =
-    narratorId === "mouse" ? "\ud83d\udc2d Milo" : narratorId === "owl" ? "\ud83e\udd89 Oliver" : "\ud83d\udc30 Rosie";
-
-  // Loading state
   if (generating) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-sky-50 to-indigo-50">
@@ -163,7 +157,7 @@ export default function StoryPage() {
             {narratorLabel} is creating your story about {topic}...
           </p>
           <p className="text-sm text-indigo-400">
-            Generating story and narration audio — this may take a moment
+            Generating story and narration audio
           </p>
         </div>
       </div>
@@ -174,13 +168,8 @@ export default function StoryPage() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-sky-50 to-indigo-50">
         <div className="text-center space-y-4">
-          <p className="text-lg font-semibold text-red-600">
-            {error ?? "Something went wrong"}
-          </p>
-          <a
-            href="/"
-            className="inline-block rounded-full bg-indigo-500 px-6 py-3 text-sm font-bold text-white hover:bg-indigo-600"
-          >
+          <p className="text-lg font-semibold text-red-600">{error ?? "Something went wrong"}</p>
+          <a href="/" className="inline-block rounded-full bg-indigo-500 px-6 py-3 text-sm font-bold text-white hover:bg-indigo-600">
             Try Again
           </a>
         </div>
@@ -190,28 +179,19 @@ export default function StoryPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-b from-sky-50 to-indigo-50">
-      {/* Header */}
       <header className="flex items-center justify-between px-6 py-4 bg-white/70 backdrop-blur border-b border-indigo-100">
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-bold text-indigo-900">{story.title}</span>
-        </div>
+        <span className="text-sm font-bold text-indigo-900">{story.title}</span>
         <div className="flex items-center gap-4 text-sm text-indigo-500">
           <span>Narrated by {narratorLabel}</span>
           <span className="text-indigo-300">|</span>
-          <span>
-            Page {pageIndex + 1} of {pages.length}
-            {needsChoice ? "+" : ""}
-          </span>
+          <span>Page {pageIndex + 1} of {pages.length}{needsChoice ? "+" : ""}</span>
         </div>
       </header>
 
-      {/* Main content */}
       <main className="flex flex-1 flex-col items-center justify-center px-6 py-8">
         <div className="w-full max-w-4xl space-y-6">
           {/* Illustration placeholder */}
-          <div
-            className={`relative h-64 md:h-80 w-full rounded-3xl bg-gradient-to-br ${getGradient(pageIndex)} flex items-center justify-center shadow-inner overflow-hidden`}
-          >
+          <div className={`relative h-64 md:h-80 w-full rounded-3xl bg-gradient-to-br ${getGradient(pageIndex)} flex items-center justify-center shadow-inner overflow-hidden`}>
             <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_30%_40%,white_0%,transparent_60%)]" />
             <p className="text-white/70 text-sm font-medium px-8 text-center italic">
               {currentPage.image_prompt}
@@ -220,27 +200,21 @@ export default function StoryPage() {
 
           {/* Narration text */}
           <div className="rounded-2xl bg-white p-6 md:p-8 shadow-sm border border-indigo-100">
-            <p className="text-lg leading-relaxed text-gray-700">
-              {currentPage.narration}
-            </p>
+            <p className="text-lg leading-relaxed text-gray-700">{currentPage.narration}</p>
           </div>
 
           {/* Controls */}
           <div className="flex items-center justify-between">
-            {/* Prev */}
             <button
               onClick={handlePrev}
               disabled={pageIndex === 0}
               className={`rounded-full px-5 py-2.5 text-sm font-semibold transition-all ${
-                pageIndex === 0
-                  ? "text-gray-300 cursor-not-allowed"
-                  : "text-indigo-600 hover:bg-indigo-50"
+                pageIndex === 0 ? "text-gray-300 cursor-not-allowed" : "text-indigo-600 hover:bg-indigo-50"
               }`}
             >
               &larr; Back
             </button>
 
-            {/* Play / Stop */}
             <button
               onClick={handleSpeak}
               disabled={loading && !playing}
@@ -253,21 +227,14 @@ export default function StoryPage() {
               {loading && !playing ? "Loading..." : playing ? "Stop" : "\u25b6  Read Aloud"}
             </button>
 
-            {/* Next / Choice / Restart */}
             {needsChoice ? (
               <div className="text-sm text-indigo-400 font-medium">Make a choice &darr;</div>
             ) : isLastPage ? (
-              <button
-                onClick={handleRestart}
-                className="rounded-full px-5 py-2.5 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 transition-all"
-              >
+              <button onClick={handleRestart} className="rounded-full px-5 py-2.5 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 transition-all">
                 Restart
               </button>
             ) : (
-              <button
-                onClick={handleNext}
-                className="rounded-full px-5 py-2.5 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 transition-all"
-              >
+              <button onClick={handleNext} className="rounded-full px-5 py-2.5 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 transition-all">
                 Next &rarr;
               </button>
             )}
@@ -276,9 +243,7 @@ export default function StoryPage() {
           {/* Choice UI */}
           {needsChoice && currentPage.choice && (
             <div className="rounded-2xl bg-indigo-50 border-2 border-indigo-200 p-6 space-y-4">
-              <p className="text-center font-semibold text-indigo-800">
-                {currentPage.choice.question}
-              </p>
+              <p className="text-center font-semibold text-indigo-800">{currentPage.choice.question}</p>
               <div className="grid grid-cols-2 gap-4">
                 <button
                   onClick={() => handleChoice("a")}
@@ -297,6 +262,14 @@ export default function StoryPage() {
           )}
         </div>
       </main>
+
+      <NarratorChat
+        narratorId={narratorId}
+        voiceId={voiceId}
+        topic={topic}
+        currentNarration={currentPage.narration}
+        narratorName={narratorName}
+      />
     </div>
   );
 }
