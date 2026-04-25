@@ -32,6 +32,16 @@ const NARRATOR_LABELS: Record<string, string> = {
   owl: "\ud83e\udd89 Oliver",
 };
 
+const INACTIVITY_TIMEOUT = 30_000;
+
+const RE_ENGAGEMENT_PROMPTS = [
+  "Hey! Are you still with me? Want me to read that part again?",
+  "Still there? I was just thinking about something cool related to our story!",
+  "Hey friend! Did that last part make you curious about anything?",
+  "I'm still here! Want to keep going, or do you have a question?",
+  "Psst! Don't forget, you can ask me anything about the story!",
+];
+
 function getGradient(index: number) {
   return PLACEHOLDER_GRADIENTS[index % PLACEHOLDER_GRADIENTS.length];
 }
@@ -48,11 +58,22 @@ export default function StoryPage() {
   const [branchChoices, setBranchChoices] = useState<Record<string, "a" | "b">>({});
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [hasFinishedReading, setHasFinishedReading] = useState(false);
+  const [highlightedWordIndex, setHighlightedWordIndex] = useState(-1);
+  const [nudgeText, setNudgeText] = useState<string | null>(null);
+  const [chatActive, setChatActive] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const highlightInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nudgeCount = useRef(0);
 
+  const narratorLabel = NARRATOR_LABELS[narratorId] ?? NARRATOR_LABELS.mouse;
+  const narratorName = NARRATOR_NAMES[narratorId] ?? NARRATOR_NAMES.mouse;
+  const voiceId = VOICE_IDS[narratorId] ?? VOICE_IDS.mouse;
+
+  // --- Story generation ---
   useEffect(() => {
     let cancelled = false;
-
     async function generate() {
       setGenerating(true);
       setError(null);
@@ -71,7 +92,6 @@ export default function StoryPage() {
         if (!cancelled) setGenerating(false);
       }
     }
-
     generate();
     return () => { cancelled = true; };
   }, [topic, narratorId]);
@@ -83,29 +103,62 @@ export default function StoryPage() {
   const currentPage: Page | undefined = pages[pageIndex];
   const isLastPage = pageIndex === pages.length - 1 && !currentPage?.choice;
   const needsChoice = currentPage?.choice && !branchChoices[currentPage.page_id];
+  const words = useMemo(() => currentPage?.narration.split(/\s+/) ?? [], [currentPage?.narration]);
 
-  const narratorLabel = NARRATOR_LABELS[narratorId] ?? NARRATOR_LABELS.mouse;
-  const narratorName = NARRATOR_NAMES[narratorId] ?? NARRATOR_NAMES.mouse;
-  const voiceId = VOICE_IDS[narratorId] ?? VOICE_IDS.mouse;
+  // --- Word highlighting ---
+  const stopHighlighting = useCallback(() => {
+    if (highlightInterval.current) {
+      clearInterval(highlightInterval.current);
+      highlightInterval.current = null;
+    }
+    setHighlightedWordIndex(-1);
+  }, []);
 
+  const startHighlighting = useCallback((wordCount: number, durationMs: number) => {
+    stopHighlighting();
+    const msPerWord = durationMs / wordCount;
+    let i = 0;
+    setHighlightedWordIndex(0);
+    highlightInterval.current = setInterval(() => {
+      i += 1;
+      if (i >= wordCount) {
+        stopHighlighting();
+        return;
+      }
+      setHighlightedWordIndex(i);
+    }, msPerWord);
+  }, [stopHighlighting]);
+
+  // --- Audio playback ---
   const stopAudio = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
     }
     setPlaying(false);
-  }, []);
+    stopHighlighting();
+  }, [stopHighlighting]);
 
-  async function handleSpeak() {
-    if (playing) { stopAudio(); return; }
-    if (!currentPage) return;
+  const playNarration = useCallback(async (page: Page) => {
+    stopAudio();
+    setHasFinishedReading(false);
+    const pageWords = page.narration.split(/\s+/);
 
-    // Use pre-generated audio if available
-    if (currentPage.audio_url) {
+    if (page.audio_url) {
       setPlaying(true);
-      const audio = new Audio(currentPage.audio_url);
+      const audio = new Audio(page.audio_url);
       audioRef.current = audio;
-      audio.onended = () => { setPlaying(false); audioRef.current = null; };
+
+      // Start highlighting once we know the duration
+      audio.onloadedmetadata = () => {
+        startHighlighting(pageWords.length, audio.duration * 1000);
+      };
+      audio.onended = () => {
+        setPlaying(false);
+        setHasFinishedReading(true);
+        audioRef.current = null;
+        stopHighlighting();
+      };
       await audio.play();
       return;
     }
@@ -117,16 +170,22 @@ export default function StoryPage() {
       const res = await fetch("/api/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: currentPage.narration, narrator: narratorId }),
+        body: JSON.stringify({ text: page.narration, narrator: narratorId }),
       });
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audioRef.current = audio;
+
+      audio.onloadedmetadata = () => {
+        startHighlighting(pageWords.length, audio.duration * 1000);
+      };
       audio.onended = () => {
         setPlaying(false);
+        setHasFinishedReading(true);
         audioRef.current = null;
         URL.revokeObjectURL(url);
+        stopHighlighting();
       };
       await audio.play();
     } catch {
@@ -134,20 +193,85 @@ export default function StoryPage() {
     } finally {
       setLoading(false);
     }
+  }, [stopAudio, narratorId, startHighlighting, stopHighlighting]);
+
+  function handleSpeak() {
+    if (playing) { stopAudio(); return; }
+    if (currentPage) playNarration(currentPage);
   }
 
-  function handleNext() { stopAudio(); setPageIndex((i) => Math.min(i + 1, pages.length - 1)); }
-  function handlePrev() { stopAudio(); setPageIndex((i) => Math.max(i - 1, 0)); }
+  // --- Auto-narrate when page changes ---
+  useEffect(() => {
+    if (!currentPage || generating) return;
+    setHasFinishedReading(false);
+    playNarration(currentPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage?.page_id, generating]);
+
+  // --- Stop narration when chat starts ---
+  const handleChatStatusChange = useCallback((active: boolean) => {
+    setChatActive(active);
+    if (active) stopAudio();
+  }, [stopAudio]);
+
+  // --- Inactivity re-engagement ---
+  const resetInactivityTimer = useCallback(() => {
+    setNudgeText(null);
+    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+    inactivityTimer.current = setTimeout(() => {
+      const prompt = RE_ENGAGEMENT_PROMPTS[nudgeCount.current % RE_ENGAGEMENT_PROMPTS.length];
+      nudgeCount.current += 1;
+      setNudgeText(prompt);
+      fetch("/api/speak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: prompt, narrator: narratorId }),
+      })
+        .then((res) => res.blob())
+        .then((blob) => {
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          audio.onended = () => URL.revokeObjectURL(url);
+          audio.play();
+        })
+        .catch(() => {});
+    }, INACTIVITY_TIMEOUT);
+  }, [narratorId]);
+
+  useEffect(() => {
+    if (generating || !story) return;
+    resetInactivityTimer();
+    return () => { if (inactivityTimer.current) clearTimeout(inactivityTimer.current); };
+  }, [pageIndex, branchChoices, playing, generating, story, resetInactivityTimer]);
+
+  useEffect(() => {
+    if (generating || !story) return;
+    const reset = () => resetInactivityTimer();
+    window.addEventListener("click", reset);
+    window.addEventListener("keydown", reset);
+    window.addEventListener("touchstart", reset);
+    return () => {
+      window.removeEventListener("click", reset);
+      window.removeEventListener("keydown", reset);
+      window.removeEventListener("touchstart", reset);
+    };
+  }, [generating, story, resetInactivityTimer]);
+
+  // --- Navigation ---
+  function handleNext() { stopAudio(); setHasFinishedReading(false); setPageIndex((i) => Math.min(i + 1, pages.length - 1)); }
+  function handlePrev() { stopAudio(); setHasFinishedReading(false); setPageIndex((i) => Math.max(i - 1, 0)); }
 
   function handleChoice(option: "a" | "b") {
     if (!currentPage) return;
     stopAudio();
+    setHasFinishedReading(false);
     setBranchChoices((prev) => ({ ...prev, [currentPage.page_id]: option }));
     setPageIndex((i) => i + 1);
   }
 
-  function handleRestart() { stopAudio(); setBranchChoices({}); setPageIndex(0); }
+  function handleRestart() { stopAudio(); setHasFinishedReading(false); setBranchChoices({}); setPageIndex(0); }
 
+  // --- Render ---
   if (generating) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-sky-50 to-indigo-50">
@@ -156,9 +280,7 @@ export default function StoryPage() {
           <p className="text-lg font-semibold text-indigo-800">
             {narratorLabel} is creating your story about {topic}...
           </p>
-          <p className="text-sm text-indigo-400">
-            Generating story and narration audio
-          </p>
+          <p className="text-sm text-indigo-400">Generating story and narration audio</p>
         </div>
       </div>
     );
@@ -198,10 +320,38 @@ export default function StoryPage() {
             </p>
           </div>
 
-          {/* Narration text */}
+          {/* Narration text with word-by-word highlighting */}
           <div className="rounded-2xl bg-white p-6 md:p-8 shadow-sm border border-indigo-100">
-            <p className="text-lg leading-relaxed text-gray-700">{currentPage.narration}</p>
+            <p className="text-lg leading-relaxed">
+              {words.map((word, i) => (
+                <span
+                  key={`${currentPage.page_id}-${i}`}
+                  className={`transition-colors duration-150 ${
+                    i === highlightedWordIndex
+                      ? "bg-indigo-200 text-indigo-900 rounded px-0.5"
+                      : i < highlightedWordIndex
+                        ? "text-gray-800"
+                        : "text-gray-400"
+                  }`}
+                >
+                  {word}{" "}
+                </span>
+              ))}
+            </p>
           </div>
+
+          {/* Re-engagement nudge */}
+          {nudgeText && (
+            <div
+              className="rounded-2xl bg-amber-50 border-2 border-amber-200 p-4 text-center cursor-pointer transition-all hover:bg-amber-100"
+              onClick={() => setNudgeText(null)}
+            >
+              <p className="text-sm font-medium text-amber-800">
+                {narratorLabel}: &ldquo;{nudgeText}&rdquo;
+              </p>
+              <p className="text-xs text-amber-500 mt-1">Tap to dismiss</p>
+            </div>
+          )}
 
           {/* Controls */}
           <div className="flex items-center justify-between">
@@ -215,17 +365,28 @@ export default function StoryPage() {
               &larr; Back
             </button>
 
-            <button
-              onClick={handleSpeak}
-              disabled={loading && !playing}
-              className={`rounded-full px-8 py-3 text-sm font-bold transition-all shadow-md ${
-                playing
-                  ? "bg-red-500 text-white hover:bg-red-600"
-                  : "bg-gradient-to-r from-indigo-500 to-purple-600 text-white hover:shadow-lg"
-              }`}
-            >
-              {loading && !playing ? "Loading..." : playing ? "Stop" : "\u25b6  Read Aloud"}
-            </button>
+            {playing ? (
+              <button
+                onClick={handleSpeak}
+                className="rounded-full px-8 py-3 text-sm font-bold transition-all shadow-md bg-red-500 text-white hover:bg-red-600"
+              >
+                Stop
+              </button>
+            ) : loading ? (
+              <button
+                disabled
+                className="rounded-full px-8 py-3 text-sm font-bold shadow-md bg-gray-300 text-gray-500 cursor-wait"
+              >
+                Loading...
+              </button>
+            ) : hasFinishedReading ? (
+              <button
+                onClick={handleSpeak}
+                className="rounded-full px-8 py-3 text-sm font-bold transition-all shadow-md bg-gradient-to-r from-indigo-500 to-purple-600 text-white hover:shadow-lg"
+              >
+                {"\ud83d\udd01"} Read Again
+              </button>
+            ) : null}
 
             {needsChoice ? (
               <div className="text-sm text-indigo-400 font-medium">Make a choice &darr;</div>
@@ -269,6 +430,7 @@ export default function StoryPage() {
         topic={topic}
         currentNarration={currentPage.narration}
         narratorName={narratorName}
+        onChatStatusChange={handleChatStatusChange}
       />
     </div>
   );

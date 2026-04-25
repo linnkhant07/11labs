@@ -9,6 +9,7 @@ interface NarratorChatProps {
   topic: string;
   currentNarration: string;
   narratorName: string;
+  onChatStatusChange?: (active: boolean) => void;
 }
 
 const NARRATOR_PROMPTS: Record<string, string> = {
@@ -26,10 +27,13 @@ export function NarratorChat({
   topic,
   currentNarration,
   narratorName,
+  onChatStatusChange,
 }: NarratorChatProps) {
   const [error, setError] = useState<string | null>(null);
 
   const conversation = useConversation({
+    onConnect: () => onChatStatusChange?.(true),
+    onDisconnect: () => onChatStatusChange?.(false),
     onError: (err) => {
       console.error("[NarratorChat] Error:", err);
       setError("Something went wrong. Try again!");
