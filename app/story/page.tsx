@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { TORNADO_STORY, getReadingOrder, type Page } from "../lib/stories";
+import { getReadingOrder, type Story, type Page } from "../lib/stories";
 
 const PLACEHOLDER_GRADIENTS = [
   "from-sky-300 to-cyan-500",
@@ -19,10 +19,12 @@ function getGradient(index: number) {
 
 export default function StoryPage() {
   const searchParams = useSearchParams();
-  const narratorId = searchParams.get("narrator") ?? "fox";
+  const narratorId = searchParams.get("narrator") ?? "mouse";
   const topic = searchParams.get("topic") ?? "tornadoes";
 
-  const story = topic === "tornadoes" ? TORNADO_STORY : TORNADO_STORY;
+  const [story, setStory] = useState<Story | null>(null);
+  const [generating, setGenerating] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [pageIndex, setPageIndex] = useState(0);
   const [branchChoices, setBranchChoices] = useState<Record<string, "a" | "b">>({});
@@ -30,7 +32,39 @@ export default function StoryPage() {
   const [loading, setLoading] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const pages = useMemo(() => getReadingOrder(story.pages, branchChoices), [branchChoices, story.pages]);
+  // Fetch story from /api/generate
+  useEffect(() => {
+    let cancelled = false;
+
+    async function generate() {
+      setGenerating(true);
+      setError(null);
+      try {
+        const res = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ topic, narrator: narratorId }),
+        });
+
+        if (!res.ok) throw new Error("Failed to generate story");
+
+        const data: Story = await res.json();
+        if (!cancelled) setStory(data);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Something went wrong");
+      } finally {
+        if (!cancelled) setGenerating(false);
+      }
+    }
+
+    generate();
+    return () => { cancelled = true; };
+  }, [topic, narratorId]);
+
+  const pages = useMemo(
+    () => (story ? getReadingOrder(story.pages, branchChoices) : []),
+    [branchChoices, story]
+  );
   const currentPage: Page | undefined = pages[pageIndex];
   const isLastPage = pageIndex === pages.length - 1 && !currentPage?.choice;
   const needsChoice = currentPage?.choice && !branchChoices[currentPage.page_id];
@@ -50,6 +84,20 @@ export default function StoryPage() {
     }
     if (!currentPage) return;
 
+    // If we have a pre-generated audio_url (base64), use it directly
+    if (currentPage.audio_url) {
+      setPlaying(true);
+      const audio = new Audio(currentPage.audio_url);
+      audioRef.current = audio;
+      audio.onended = () => {
+        setPlaying(false);
+        audioRef.current = null;
+      };
+      await audio.play();
+      return;
+    }
+
+    // Fallback: call /api/speak on-demand
     setLoading(true);
     setPlaying(true);
 
@@ -102,10 +150,43 @@ export default function StoryPage() {
     setPageIndex(0);
   }
 
-  if (!currentPage) return null;
-
   const narratorLabel =
     narratorId === "mouse" ? "\ud83d\udc2d Milo" : narratorId === "owl" ? "\ud83e\udd89 Oliver" : "\ud83d\udc30 Rosie";
+
+  // Loading state
+  if (generating) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-sky-50 to-indigo-50">
+        <div className="text-center space-y-4">
+          <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600" />
+          <p className="text-lg font-semibold text-indigo-800">
+            {narratorLabel} is creating your story about {topic}...
+          </p>
+          <p className="text-sm text-indigo-400">
+            Generating story and narration audio — this may take a moment
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !story || !currentPage) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-sky-50 to-indigo-50">
+        <div className="text-center space-y-4">
+          <p className="text-lg font-semibold text-red-600">
+            {error ?? "Something went wrong"}
+          </p>
+          <a
+            href="/"
+            className="inline-block rounded-full bg-indigo-500 px-6 py-3 text-sm font-bold text-white hover:bg-indigo-600"
+          >
+            Try Again
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-b from-sky-50 to-indigo-50">
