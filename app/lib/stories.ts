@@ -1,6 +1,58 @@
+import { collectAllPages } from "./generateUtils";
+
+/**
+ * Build an image prompt for a storybook page, using style guide and character info.
+ * @param scene - The page object (should include a 'visual' field for advanced use, or fallback to image_prompt/narration)
+ * @param styleGuide - The style guide object
+ * @param characters - The array of character objects
+ * @param visual (optional) - If present, overrides scene.visual
+ */
+export function buildImagePrompt(
+  scene: any,
+  styleGuide: StyleGuide,
+  characters: Character[],
+  visual?: {
+    characters?: string[];
+    setting?: string;
+    action?: string;
+    mood?: string;
+    time_of_day?: string;
+  }
+): string {
+  // Use scene.visual if present, else fallback to minimal info
+  const v = visual || scene.visual || {};
+  const charNames = v.characters || [];
+  const charDesc = characters
+    .filter((c) => charNames.includes(c.name))
+    .map((c) => c.description);
+
+  return `\nChildren's storybook illustration.\n\nStyle:\n${styleGuide.art_style}, ${styleGuide.color_palette}, ${styleGuide.lighting}\n\nCharacters:\n${charDesc.length ? charDesc.join(", ") : "(main characters)"}\n\nScene:\n${v.setting || scene.image_prompt || scene.narration || "(describe the main event)"}${v.action ? ", " + v.action : ""}\n\nMood:\n${v.mood || ""}\n\nTime:\n${v.time_of_day || ""}\n\nComposition:\nFull bleed illustration. The scene fills the entire image edge to edge with no borders, no frames, no white margins, no vignette, no painted border, no canvas edges showing. Centered subject, cinematic framing.\n\nNo text, no watermark, no border, no frame, no white edges.\n`;
+}
+
+/**
+ * Generate image prompts for every page in a story, including branches.
+ */
+export function generateImagePromptsForStory(
+  story: Pick<Story, "pages" | "style_guide" | "characters">
+): { page_id: string; prompt: string }[] {
+  const allPages = collectAllPages(story.pages);
+  return allPages.map((page) => ({
+    page_id: page.page_id,
+    prompt: buildImagePrompt(page, story.style_guide, story.characters),
+  }));
+}
+
 export interface Hotspot {
   object: string;
   bbox: [number, number, number, number];
+}
+
+export interface PageVisual {
+  characters?: string[];
+  setting?: string;
+  action?: string;
+  mood?: string;
+  time_of_day?: string;
 }
 
 export interface Page {
@@ -10,11 +62,23 @@ export interface Page {
   image_url: string;
   audio_url: string;
   hotspots: Hotspot[];
+  visual?: PageVisual;
   choice: null | {
     question: string;
     option_a: { label: string; pages: Page[] };
     option_b: { label: string; pages: Page[] };
   };
+}
+
+export interface StyleGuide {
+  art_style: string;
+  color_palette: string;
+  lighting: string;
+}
+
+export interface Character {
+  name: string;
+  description: string;
 }
 
 export interface Story {
@@ -25,6 +89,8 @@ export interface Story {
     character: "mouse" | "rabbit" | "owl" | "custom";
     voice_id: string;
   };
+  style_guide: StyleGuide;
+  characters: Character[];
   pages: Page[];
   cyu: { type: "voice" | "drag" | "draw"; question: string }[];
 }
@@ -32,6 +98,16 @@ export interface Story {
 export const TORNADO_STORY: Omit<Story, "narrator"> = {
   title: "Into the Storm: How Tornadoes Are Born",
   topic: "tornadoes",
+  style_guide: {
+    art_style: "watercolor, soft edges, storybook style",
+    color_palette: "vivid blues, greens, and grays",
+    lighting: "dramatic, stormy, with bright highlights"
+  },
+  characters: [
+    { name: "Tornado", description: "A swirling, powerful funnel cloud" },
+    { name: "Scientist", description: "A friendly meteorologist in a raincoat" },
+    { name: "Child", description: "Curious child with wide eyes and rain boots" }
+  ],
   pages: [
     {
       page_id: "p1",

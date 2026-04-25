@@ -1,196 +1,90 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenAI } from "@google/genai";
-import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
-import type { Page } from "../../lib/stories";
+import type { Page, Story } from "../../lib/stories";
+import { buildImagePrompt } from "../../lib/stories";
+import { collectAllPages } from "../../lib/generateUtils";
+import { generateStoryData, generateImage, type RawPage } from "../../lib/gemini";
+import { generateAudio, resolveVoiceId } from "../../lib/elevenlabs";
+import { saveStoryToDisk } from "../../lib/storyStorage";
+import { STORY_PROMPT } from "../../lib/prompts";
 
-const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-const elevenlabs = new ElevenLabsClient({
-  apiKey: process.env.ELEVENLABS_API_KEY,
-});
-
-const VOICE_MAP: Record<string, string | undefined> = {
-  mouse: process.env.ELEVENLABS_MOUSE_VOICE_ID,
-  rabbit: process.env.ELEVENLABS_RABBIT_VOICE_ID,
-  owl: process.env.ELEVENLABS_OWL_VOICE_ID,
-};
-
-const STORY_PROMPT = `You are an educational storyteller for children ages 6-12, especially those with ADHD. Generate an engaging, educational storybook about the given topic.
-
-RULES:
-- Write 3 pages of narration BEFORE a branching choice
-- The choice should offer 2 paths, each with 2 more pages
-- After the branches, write 1 final concluding page
-- Each page's narration should be 3-5 sentences, vivid and engaging
-- Include real educational facts — this is not fiction, it's a fun way to learn real science/history
-- Write at a level appropriate for ages 6-12
-- Keep attention by using dramatic language, questions, and sensory details (important for ADHD)
-- Each page needs an image_prompt: a short description of what the illustration should show (vivid, specific, child-friendly)
-
-Return ONLY valid JSON matching this exact structure:
-{
-  "title": "string",
-  "topic": "string",
-  "pages": [
-    {
-      "page_id": "p1",
-      "narration": "string",
-      "image_prompt": "string"
-    },
-    {
-      "page_id": "p2",
-      "narration": "string",
-      "image_prompt": "string"
-    },
-    {
-      "page_id": "p3",
-      "narration": "string",
-      "image_prompt": "string",
-      "choice": {
-        "question": "string",
-        "option_a": {
-          "label": "string (short, 5-8 words)",
-          "pages": [
-            { "page_id": "p4a", "narration": "string", "image_prompt": "string" },
-            { "page_id": "p5a", "narration": "string", "image_prompt": "string" }
-          ]
-        },
-        "option_b": {
-          "label": "string (short, 5-8 words)",
-          "pages": [
-            { "page_id": "p4b", "narration": "string", "image_prompt": "string" },
-            { "page_id": "p5b", "narration": "string", "image_prompt": "string" }
-          ]
+function rawPageToPage(raw: RawPage): Page {
+  return {
+    page_id: raw.page_id,
+    narration: raw.narration,
+    image_prompt: raw.image_prompt,
+    image_url: "",
+    audio_url: "",
+    hotspots: [],
+    visual: raw.visual,
+    choice: raw.choice
+      ? {
+          question: raw.choice.question,
+          option_a: {
+            label: raw.choice.option_a.label,
+            pages: raw.choice.option_a.pages.map(rawPageToPage),
+          },
+          option_b: {
+            label: raw.choice.option_b.label,
+            pages: raw.choice.option_b.pages.map(rawPageToPage),
+          },
         }
-      }
-    },
-    {
-      "page_id": "p6",
-      "narration": "string",
-      "image_prompt": "string"
-    }
-  ]
-}`;
-
-async function generateAudioForPage(
-  text: string,
-  voiceId: string
-): Promise<string> {
-  const audioStream = await elevenlabs.textToSpeech.convert(voiceId, {
-    text,
-    modelId: "eleven_flash_v2_5",
-    outputFormat: "mp3_44100_128",
-  });
-
-  // Collect ReadableStream into a buffer and return as base64 data URL
-  const reader = (audioStream as ReadableStream<Uint8Array>).getReader();
-  const chunks: Uint8Array[] = [];
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-  }
-  const buffer = Buffer.concat(chunks);
-  const base64 = buffer.toString("base64");
-  return `data:audio/mpeg;base64,${base64}`;
-}
-
-function collectAllPages(pages: Page[]): Page[] {
-  const all: Page[] = [];
-  for (const page of pages) {
-    all.push(page);
-    if (page.choice) {
-      all.push(...page.choice.option_a.pages);
-      all.push(...page.choice.option_b.pages);
-    }
-  }
-  return all;
+      : null,
+  };
 }
 
 export async function POST(req: NextRequest) {
-  const { topic, narrator } = (await req.json()) as {
-    topic: string;
-    narrator: string;
-  };
+  const body = await req.json().catch(() => null);
+  if (
+    !body ||
+    typeof body.topic !== "string" ||
+    typeof body.narrator !== "string"
+  ) {
+    return NextResponse.json(
+      { error: "topic and narrator are required" },
+      { status: 400 }
+    );
+  }
 
-  const voiceId = VOICE_MAP[narrator] || process.env.ELEVENLABS_MOUSE_VOICE_ID!;
+  const { topic, narrator } = body as { topic: string; narrator: string };
+  const voiceId = resolveVoiceId(narrator);
 
-  // 1. Generate story with Gemini
-  const response = await genai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: `${STORY_PROMPT}\n\nTopic: ${topic}`,
-    config: {
-      responseMimeType: "application/json",
-    },
-  });
+  try {
+    const raw = await generateStoryData(topic, STORY_PROMPT);
+    const pages = raw.pages.map(rawPageToPage);
+    const allPages = collectAllPages(pages);
 
-  const storyData = JSON.parse(response.text ?? "{}");
+    const [imageUrls, audioUrls] = await Promise.all([
+      Promise.all(
+        allPages.map((p) =>
+          generateImage(buildImagePrompt(p, raw.style_guide, raw.characters))
+        )
+      ),
+      Promise.all(allPages.map((p) => generateAudio(p.narration, voiceId))),
+    ]);
 
-  // 2. Build full Page objects from Gemini response
-  function toPage(raw: Record<string, unknown>): Page {
-    const rawChoice = raw.choice as Record<string, unknown> | undefined;
-    return {
-      page_id: raw.page_id as string,
-      narration: raw.narration as string,
-      image_prompt: raw.image_prompt as string,
-      image_url: "",
-      audio_url: "",
-      hotspots: [],
-      choice: rawChoice
-        ? {
-            question: rawChoice.question as string,
-            option_a: {
-              label: (rawChoice.option_a as Record<string, unknown>).label as string,
-              pages: (
-                (rawChoice.option_a as Record<string, unknown>).pages as Record<string, unknown>[]
-              ).map(toPage),
-            },
-            option_b: {
-              label: (rawChoice.option_b as Record<string, unknown>).label as string,
-              pages: (
-                (rawChoice.option_b as Record<string, unknown>).pages as Record<string, unknown>[]
-              ).map(toPage),
-            },
-          }
-        : null,
+    allPages.forEach((page, i) => {
+      page.image_url = imageUrls[i];
+      page.audio_url = audioUrls[i];
+    });
+
+    const story: Story = {
+      title: raw.title,
+      topic: raw.topic ?? topic,
+      style_guide: raw.style_guide,
+      characters: raw.characters,
+      narrator: {
+        type: "animal",
+        character: narrator as Story["narrator"]["character"],
+        voice_id: voiceId,
+      },
+      pages,
+      cyu: [],
     };
+
+    await saveStoryToDisk(story, allPages);
+    return NextResponse.json(story);
+  } catch (err) {
+    console.error("[/api/generate]", err);
+    return NextResponse.json({ error: "Story generation failed" }, { status: 500 });
   }
-
-  const pages: Page[] = (storyData.pages as Record<string, unknown>[]).map(toPage);
-
-  // 3. Generate TTS for ALL pages in parallel (including branch pages)
-  const allPages = collectAllPages(pages);
-  const audioPromises = allPages.map((page) =>
-    generateAudioForPage(page.narration, voiceId)
-  );
-  const audioUrls = await Promise.all(audioPromises);
-
-  // Assign audio URLs back to pages
-  const audioMap = new Map<string, string>();
-  allPages.forEach((page, i) => {
-    audioMap.set(page.page_id, audioUrls[i]);
-  });
-
-  function assignAudio(pages: Page[]) {
-    for (const page of pages) {
-      page.audio_url = audioMap.get(page.page_id) ?? "";
-      if (page.choice) {
-        assignAudio(page.choice.option_a.pages);
-        assignAudio(page.choice.option_b.pages);
-      }
-    }
-  }
-  assignAudio(pages);
-
-  return NextResponse.json({
-    title: storyData.title,
-    topic: storyData.topic ?? topic,
-    narrator: {
-      type: "animal" as const,
-      character: narrator,
-      voice_id: voiceId,
-    },
-    pages,
-    cyu: [],
-  });
 }
