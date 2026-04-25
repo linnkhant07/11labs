@@ -86,6 +86,7 @@ interface UseConversationalPttOptions {
   agentId?: string;
   inputGain?: number;
   clientTools?: ClientToolDeclaration[];
+  voiceIdOverride?: string;
   onUserTranscript?: (text: string) => void;
   onAgentTranscript?: (text: string) => void;
   onSocketEvent?: (event: { type: string; detail?: string }) => void;
@@ -112,6 +113,7 @@ export function useConversationalPtt(options: UseConversationalPttOptions = {}) 
     agentId,
     inputGain = 2,
     clientTools,
+    voiceIdOverride,
     onUserTranscript,
     onAgentTranscript,
     onSocketEvent,
@@ -122,6 +124,11 @@ export function useConversationalPtt(options: UseConversationalPttOptions = {}) 
   useEffect(() => {
     clientToolsRef.current = clientTools;
   }, [clientTools]);
+
+  const voiceIdOverrideRef = useRef<string | undefined>(voiceIdOverride);
+  useEffect(() => {
+    voiceIdOverrideRef.current = voiceIdOverride;
+  }, [voiceIdOverride]);
 
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
@@ -296,24 +303,28 @@ export function useConversationalPtt(options: UseConversationalPttOptions = {}) 
           isConnectingRef.current = false;
           onSocketEvent?.({ type: "ws_open" });
           const declaredTools = clientToolsRef.current ?? [];
+          const voiceOverride = voiceIdOverrideRef.current;
           const initPayload: Record<string, unknown> = {
             type: "conversation_initiation_client_data",
           };
+          const override: Record<string, unknown> = {};
           if (declaredTools.length > 0) {
-            initPayload.conversation_config_override = {
-              agent: {
-                prompt: {
-                  tools: declaredTools,
-                },
-              },
-            };
+            override.agent = { prompt: { tools: declaredTools } };
+          }
+          if (voiceOverride) {
+            override.tts = { voice_id: voiceOverride };
+          }
+          if (Object.keys(override).length > 0) {
+            initPayload.conversation_config_override = override;
           }
           ws.send(JSON.stringify(initPayload));
           onSocketEvent?.({
             type: "conversation_init_sent",
-            detail: declaredTools.length
-              ? `tools=${declaredTools.map((t) => t.name).join(",")}`
-              : "no_tools_declared",
+            detail: `tools=${
+              declaredTools.length
+                ? declaredTools.map((t) => t.name).join(",")
+                : "none"
+            } voice=${voiceOverride ?? "default"}`,
           });
           resolve();
         };

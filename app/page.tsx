@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   useConversationalPtt,
@@ -10,30 +10,32 @@ import {
 const NARRATORS = [
   { id: "fox", emoji: "\ud83e\udd8a", name: "Finn the Fox", color: "from-orange-400 to-amber-500" },
   { id: "owl", emoji: "\ud83e\udd89", name: "Oliver the Owl", color: "from-indigo-400 to-purple-500" },
-  { id: "bear", emoji: "\ud83d\udc3b", name: "Bruno the Bear", color: "from-amber-600 to-yellow-700" },
 ] as const;
 
 type NarratorId = (typeof NARRATORS)[number]["id"];
 type OnboardingStep = "character" | "ready";
+type CloneState = "idle" | "recording" | "uploading" | "success" | "error";
+
+const MIN_RECORD_SECONDS = 3;
+const MIN_RECORD_BYTES = 4_000;
 
 const CHARACTER_ALIASES: Record<NarratorId, string[]> = {
   fox: ["fox", "finn", "finn fox", "finn the fox", "fiona", "fiona fox"],
   owl: ["owl", "oliver", "oliver owl", "oliver the owl"],
-  bear: ["bear", "bruno", "bruno bear", "bruno the bear"],
 };
 
 const CLIENT_TOOLS: ClientToolDeclaration[] = [
   {
     name: "select_character",
     description:
-      "Call this when the user names the narrator they want. The character must be one of: Finn the Fox, Oliver the Owl, or Bruno the Bear. Always call this tool when the user picks — never just acknowledge verbally.",
+      "Call this when the user names the narrator they want. The character must be one of: Finn the Fox or Oliver the Owl. Always call this tool when the user picks — never just acknowledge verbally.",
     parameters: {
       type: "object",
       properties: {
         character: {
           type: "string",
           description:
-            "The name the user said. Accepts variations like 'fox', 'finn', 'finn the fox', 'owl', 'oliver', 'bear', 'bruno'.",
+            "The name the user said. Accepts variations like 'fox', 'finn', 'finn the fox', 'owl', 'oliver'.",
         },
       },
       required: ["character"],
@@ -52,6 +54,23 @@ export default function Home() {
   const [activeAgentId] = useState<string | undefined>(
     process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID
   );
+
+  const [cloneState, setCloneState] = useState<CloneState>("idle");
+  const [cloneError, setCloneError] = useState<string | null>(null);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const [clonedVoiceId, setClonedVoiceId] = useState<string | null>(null);
+
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordChunksRef = useRef<Blob[]>([]);
+  const recordStreamRef = useRef<MediaStream | null>(null);
+  const recordTimerRef = useRef<number | null>(null);
+  const recordStartRef = useRef<number>(0);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("clonedVoiceId");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage is client-only; lazy init would hydration-mismatch under SSR.
+    if (saved) setClonedVoiceId(saved);
+  }, []);
 
   const selectedNarrator = useMemo(
     () => NARRATORS.find((n) => n.id === narrator) ?? null,
@@ -108,6 +127,7 @@ export default function Home() {
     agentId: activeAgentId,
     inputGain: 2.5,
     clientTools: CLIENT_TOOLS,
+    voiceIdOverride: clonedVoiceId ?? undefined,
     onSocketEvent: ({ type, detail }) => {
       void pushTerminalDebug(type, detail);
     },
@@ -121,7 +141,7 @@ export default function Home() {
           void pushTerminalDebug("character_mapping_failed", characterValue || "(empty)");
           return {
             result:
-              "Invalid character. Expected one of Finn the Fox, Oliver the Owl, or Bruno the Bear.",
+              "Invalid character. Expected one of Finn the Fox or Oliver the Owl.",
             isError: true,
           };
         }
@@ -156,6 +176,152 @@ export default function Home() {
       return { result: `Unknown tool ${toolName}`, isError: true };
     },
   });
+
+  const startCloneCapture = useCallback(async () => {
+    if (cloneState === "recording" || cloneState === "uploading") return;
+    setCloneError(null);
+    setRecordSeconds(0);
+
+    if (isConnected || isConnecting) {
+      void pushTerminalDebug("clone_pre_disconnect", "freeing_mic_for_recorder");
+      await disconnect();
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordStreamRef.current = stream;
+
+      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      recorderRef.current = recorder;
+      recordChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordChunksRef.current.push(event.data);
+      };
+
+      recorder.start();
+      setCloneState("recording");
+      recordStartRef.current = Date.now();
+      void pushTerminalDebug("clone_record_start");
+
+      recordTimerRef.current = window.setInterval(() => {
+        setRecordSeconds((Date.now() - recordStartRef.current) / 1000);
+      }, 100);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Mic access failed.";
+      setCloneState("error");
+      setCloneError(message);
+      void pushTerminalDebug("clone_record_error", message);
+    }
+  }, [cloneState, disconnect, isConnected, isConnecting, pushTerminalDebug]);
+
+  const stopCloneCapture = useCallback(async () => {
+    if (cloneState !== "recording") return;
+
+    if (recordTimerRef.current != null) {
+      window.clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      const stopped = new Promise<void>((resolve) => {
+        recorder.onstop = () => resolve();
+      });
+      recorder.stop();
+      await stopped;
+    }
+
+    recordStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recordStreamRef.current = null;
+    recorderRef.current = null;
+
+    const elapsed = (Date.now() - recordStartRef.current) / 1000;
+    const blob = new Blob(recordChunksRef.current, { type: "audio/webm" });
+    recordChunksRef.current = [];
+
+    void pushTerminalDebug(
+      "clone_record_stop",
+      `elapsed=${elapsed.toFixed(2)}s bytes=${blob.size}`
+    );
+
+    if (elapsed < MIN_RECORD_SECONDS || blob.size < MIN_RECORD_BYTES) {
+      setCloneState("error");
+      setCloneError(`Hold longer next time — at least ${MIN_RECORD_SECONDS}s.`);
+      return;
+    }
+
+    setCloneState("uploading");
+    setAgentPrompt("Cloning your buddy's voice...");
+
+    try {
+      const formData = new FormData();
+      formData.append("audio", blob, "buddy.webm");
+      formData.append("name", `study-buddy-${Date.now()}`);
+
+      const response = await fetch("/api/clone-voice", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json()) as {
+        voiceId?: string;
+        error?: string;
+        detail?: string;
+      };
+      if (!response.ok || !payload.voiceId) {
+        throw new Error(payload.error || payload.detail || "Clone failed");
+      }
+
+      localStorage.setItem("clonedVoiceId", payload.voiceId);
+      localStorage.setItem("clonedVoiceCreatedAt", new Date().toISOString());
+      setClonedVoiceId(payload.voiceId);
+      setCloneState("success");
+      setAgentPrompt("Buddy cloned! Reconnecting agent with new voice...");
+      void pushTerminalDebug("clone_upload_ok", payload.voiceId);
+
+      queueMicrotask(async () => {
+        try {
+          await disconnect();
+          if (activeAgentId) {
+            await connect(activeAgentId);
+            void pushTerminalDebug("clone_voice_swap", `voice=${payload.voiceId}`);
+            setAgentPrompt(
+              "Reconnected with cloned voice. Hold Cmd and speak — agent should reply in your buddy's voice."
+            );
+          }
+        } catch (swapError) {
+          const message =
+            swapError instanceof Error ? swapError.message : "Voice swap failed.";
+          void pushTerminalDebug("clone_voice_swap_failed", message);
+        }
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Clone request failed.";
+      setCloneState("error");
+      setCloneError(message);
+      void pushTerminalDebug("clone_upload_error", message);
+    }
+  }, [activeAgentId, cloneState, connect, disconnect, pushTerminalDebug]);
+
+  useEffect(() => {
+    return () => {
+      if (recordTimerRef.current != null) {
+        window.clearInterval(recordTimerRef.current);
+        recordTimerRef.current = null;
+      }
+      recordStreamRef.current?.getTracks().forEach((track) => track.stop());
+      recordStreamRef.current = null;
+      const recorder = recorderRef.current;
+      if (recorder && recorder.state !== "inactive") {
+        try {
+          recorder.stop();
+        } catch {
+          // Ignore — recorder may have already stopped.
+        }
+      }
+      recorderRef.current = null;
+    };
+  }, []);
 
   function selectNarratorFromCard(id: NarratorId) {
     setAgentPrompt(
@@ -275,7 +441,7 @@ export default function Home() {
 
         <div className="space-y-3">
           <h2 className="text-sm font-semibold uppercase tracking-widest text-indigo-400">
-            Characters (voice-selected)
+            Characters
           </h2>
           <div className="grid grid-cols-3 gap-4">
             {NARRATORS.map((n) => (
@@ -294,6 +460,52 @@ export default function Home() {
                 <p className="mt-1 text-[11px] text-gray-500">voice picks this</p>
               </button>
             ))}
+
+            <button
+              type="button"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                void startCloneCapture();
+              }}
+              onPointerUp={() => void stopCloneCapture()}
+              onPointerLeave={() => {
+                if (cloneState === "recording") void stopCloneCapture();
+              }}
+              onPointerCancel={() => {
+                if (cloneState === "recording") void stopCloneCapture();
+              }}
+              disabled={cloneState === "uploading"}
+              className={`rounded-2xl border-2 p-5 text-center transition-all touch-none select-none ${
+                cloneState === "recording"
+                  ? "border-rose-500 bg-rose-50 shadow-lg scale-[1.02]"
+                  : cloneState === "success"
+                  ? "border-emerald-500 bg-emerald-50"
+                  : cloneState === "error"
+                  ? "border-amber-500 bg-amber-50"
+                  : clonedVoiceId
+                  ? "border-emerald-300 bg-white hover:border-emerald-400 hover:shadow-md"
+                  : "border-gray-200 bg-white hover:border-indigo-300 hover:shadow-md"
+              }`}
+            >
+              <span className="text-5xl">
+                {cloneState === "recording"
+                  ? "🔴"
+                  : cloneState === "uploading"
+                  ? "⏳"
+                  : cloneState === "success"
+                  ? "✨"
+                  : "🎤"}
+              </span>
+              <p className="mt-2 text-sm font-semibold text-gray-800">Clone your buddy</p>
+              <p className="mt-1 text-[11px] text-gray-500">
+                {cloneState === "idle" &&
+                  (clonedVoiceId ? "buddy ready — hold to re-clone" : "hold + play voice on phone")}
+                {cloneState === "recording" && `recording ${recordSeconds.toFixed(1)}s...`}
+                {cloneState === "uploading" && "cloning..."}
+                {cloneState === "success" && "cloned ✓"}
+                {cloneState === "error" && (cloneError ?? "try again")}
+              </p>
+            </button>
           </div>
         </div>
 
