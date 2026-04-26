@@ -79,30 +79,44 @@ export default function StoryPage() {
   const narratorName = narratorId === "custom" ? "Your narrator" : (NARRATOR_NAMES[narratorId] ?? NARRATOR_NAMES.mouse);
   const voiceId = customVoiceId ?? VOICE_IDS[narratorId] ?? VOICE_IDS.mouse;
 
-  // --- Story generation ---
+  // --- Story generation (try cache first, then generate) ---
   useEffect(() => {
     if (isDemo) return;
-    let cancelled = false;
+    const controller = new AbortController();
     async function generate() {
       setGenerating(true);
       setError(null);
       try {
+        // Check for cached story first
+        const slug = topic.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+        const cached = await fetch(`/stories/${slug}/story.json`, { signal: controller.signal });
+        if (cached.ok) {
+          const data: Story = await cached.json();
+          console.log(`[story] Loaded cached story for "${topic}"`);
+          setStory(data);
+          return;
+        }
+
+        // No cache — generate from scratch
+        console.log(`[story] No cache for "${topic}", generating...`);
         const res = await fetch("/api/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ topic, narrator: narratorId }),
+          signal: controller.signal,
         });
         if (!res.ok) throw new Error("Failed to generate story");
         const data: Story = await res.json();
-        if (!cancelled) setStory(data);
+        setStory(data);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Something went wrong");
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setError(err instanceof Error ? err.message : "Something went wrong");
       } finally {
-        if (!cancelled) setGenerating(false);
+        if (!controller.signal.aborted) setGenerating(false);
       }
     }
     generate();
-    return () => { cancelled = true; };
+    return () => { controller.abort(); };
   }, [topic, narratorId]);
 
   const pages = useMemo(
@@ -389,15 +403,29 @@ export default function StoryPage() {
               <div className="grid grid-cols-2 gap-4">
                 <button
                   onClick={() => handleChoice("a")}
-                  className="rounded-xl bg-white border-2 border-indigo-200 p-4 text-center font-medium text-indigo-700 hover:border-indigo-500 hover:bg-indigo-50 transition-all hover:shadow-md"
+                  className="rounded-xl bg-white border-2 border-indigo-200 overflow-hidden text-center font-medium text-indigo-700 hover:border-indigo-500 hover:bg-indigo-50 transition-all hover:shadow-md"
                 >
-                  {currentPage.choice.option_a.label}
+                  {currentPage.choice.option_a.image_url && (
+                    <img
+                      src={currentPage.choice.option_a.image_url}
+                      alt={currentPage.choice.option_a.label}
+                      className="w-full h-32 object-cover"
+                    />
+                  )}
+                  <span className="block p-4">{currentPage.choice.option_a.label}</span>
                 </button>
                 <button
                   onClick={() => handleChoice("b")}
-                  className="rounded-xl bg-white border-2 border-indigo-200 p-4 text-center font-medium text-indigo-700 hover:border-indigo-500 hover:bg-indigo-50 transition-all hover:shadow-md"
+                  className="rounded-xl bg-white border-2 border-indigo-200 overflow-hidden text-center font-medium text-indigo-700 hover:border-indigo-500 hover:bg-indigo-50 transition-all hover:shadow-md"
                 >
-                  {currentPage.choice.option_b.label}
+                  {currentPage.choice.option_b.image_url && (
+                    <img
+                      src={currentPage.choice.option_b.image_url}
+                      alt={currentPage.choice.option_b.label}
+                      className="w-full h-32 object-cover"
+                    />
+                  )}
+                  <span className="block p-4">{currentPage.choice.option_b.label}</span>
                 </button>
               </div>
             </div>

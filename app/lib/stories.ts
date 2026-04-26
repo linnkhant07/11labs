@@ -1,6 +1,15 @@
+import { collectAllPages } from "./generateUtils";
+
 export interface Hotspot {
   object: string;
-  bbox: [number, number, number, number];
+}
+
+export interface PageVisual {
+  characters?: string[];
+  setting?: string;
+  action?: string;
+  mood?: string;
+  time_of_day?: string;
 }
 
 export interface Page {
@@ -10,11 +19,23 @@ export interface Page {
   image_url: string;
   audio_url: string;
   hotspots: Hotspot[];
+  visual?: PageVisual;
   choice: null | {
     question: string;
-    option_a: { label: string; pages: Page[] };
-    option_b: { label: string; pages: Page[] };
+    option_a: { label: string; image_prompt: string; image_url: string; pages: Page[] };
+    option_b: { label: string; image_prompt: string; image_url: string; pages: Page[] };
   };
+}
+
+export interface StyleGuide {
+  art_style: string;
+  color_palette: string;
+  lighting: string;
+}
+
+export interface Character {
+  name: string;
+  description: string;
 }
 
 export interface Story {
@@ -25,13 +46,53 @@ export interface Story {
     character: "mouse" | "rabbit" | "owl" | "custom";
     voice_id: string;
   };
+  style_guide: StyleGuide;
+  characters: Character[];
   pages: Page[];
   cyu: { type: "voice" | "drag" | "draw"; question: string }[];
 }
 
+export function buildImagePrompt(
+  scene: Page,
+  styleGuide: StyleGuide,
+  characters: Character[],
+  visual?: PageVisual
+): string {
+  const v = visual || scene.visual || {};
+  const charNames = v.characters || [];
+  const charDesc = characters
+    .filter((c) => charNames.includes(c.name))
+    .map((c) => c.description);
+
+  const hotspotObjects: string[] = (scene.hotspots ?? []).map((h) => h.object).filter(Boolean);
+  const educationalElements = hotspotObjects.length
+    ? `\n\nRequired Background Educational Elements (ALL THREE must be clearly depicted as background/environmental details — do NOT make them the main subject, do NOT label them with any text):\n${hotspotObjects.map((o, i) => `${i + 1}. ${o}`).join("\n")}`
+    : "";
+
+  return `\nChildren's storybook illustration.\n\nStyle:\n${styleGuide.art_style}, ${styleGuide.color_palette}, ${styleGuide.lighting}\n\nCharacters:\n${charDesc.length ? charDesc.join(", ") : "(main characters)"}\n\nScene:\n${v.setting || scene.image_prompt || scene.narration || "(describe the main event)"}${v.action ? ", " + v.action : ""}${educationalElements}\n\nMood:\n${v.mood || ""}\n\nTime:\n${v.time_of_day || ""}\n\nComposition:\nFull bleed illustration. The scene fills the entire image edge to edge with no borders, no frames, no white margins, no vignette, no painted border, no canvas edges showing. Centered subject, cinematic framing.\n\nAbsolutely no text, letters, words, labels, captions, signs, symbols, numbers, or writing of any kind anywhere in the image. No watermark, no border, no frame, no white edges.\n`;
+}
+
+export function generateImagePromptsForStory(
+  story: Pick<Story, "pages" | "style_guide" | "characters">
+): { page_id: string; prompt: string }[] {
+  const allPages = collectAllPages(story.pages);
+  return allPages.map((page) => ({
+    page_id: page.page_id,
+    prompt: buildImagePrompt(page, story.style_guide, story.characters),
+  }));
+}
+
+const EMPTY_STYLE_GUIDE: StyleGuide = {
+  art_style: "watercolor, soft edges, storybook style",
+  color_palette: "vivid blues, greens, and grays",
+  lighting: "dramatic, stormy, with bright highlights",
+};
+
 export const TORNADO_STORY: Omit<Story, "narrator"> = {
   title: "Into the Storm: How Tornadoes Are Born",
   topic: "tornadoes",
+  style_guide: EMPTY_STYLE_GUIDE,
+  characters: [],
   pages: [
     {
       page_id: "p1",
@@ -55,6 +116,8 @@ export const TORNADO_STORY: Omit<Story, "narrator"> = {
         question: "The funnel cloud is getting closer to the ground. What should we learn about next?",
         option_a: {
           label: "How fast can a tornado spin?",
+          image_prompt: "",
+          image_url: "",
           pages: [
             {
               page_id: "p3a",
@@ -80,6 +143,8 @@ export const TORNADO_STORY: Omit<Story, "narrator"> = {
         },
         option_b: {
           label: "How do scientists track tornadoes?",
+          image_prompt: "",
+          image_url: "",
           pages: [
             {
               page_id: "p3b",
@@ -125,6 +190,12 @@ export const TORNADO_STORY: Omit<Story, "narrator"> = {
 export const PYRAMIDS_STORY: Omit<Story, "narrator"> = {
   title: "Secrets of the Pyramids: Ancient Wonders of Egypt",
   topic: "pyramids",
+  style_guide: {
+    art_style: "watercolor, warm tones, ancient world storybook style",
+    color_palette: "golden sand, warm ochre, deep blue sky, ivory white",
+    lighting: "warm golden afternoon sunlight, long shadows",
+  },
+  characters: [],
   pages: [
     {
       page_id: "p1",
@@ -158,6 +229,8 @@ export const PYRAMIDS_STORY: Omit<Story, "narrator"> = {
         question: "How do you think the Egyptians moved those massive blocks?",
         option_a: {
           label: "Ramps and sleds on wet sand",
+          image_prompt: "",
+          image_url: "",
           pages: [
             {
               page_id: "p4a",
@@ -183,6 +256,8 @@ export const PYRAMIDS_STORY: Omit<Story, "narrator"> = {
         },
         option_b: {
           label: "A water channel system inside",
+          image_prompt: "",
+          image_url: "",
           pages: [
             {
               page_id: "p4b",
@@ -239,7 +314,6 @@ export function getReadingOrder(pages: Page[], branchChoices: Record<string, "a"
       } else if (chosen === "b") {
         result.push(...page.choice.option_b.pages);
       } else {
-        // Stop here — choice not yet made
         break;
       }
     }
