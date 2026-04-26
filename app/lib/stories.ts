@@ -1,5 +1,3 @@
-import { collectAllPages } from "./generateUtils";
-
 export interface Hotspot {
   object: string;
 }
@@ -72,26 +70,14 @@ export function buildImagePrompt(
   return `\nChildren's storybook illustration.\n\nStyle:\n${styleGuide.art_style}, ${styleGuide.color_palette}, ${styleGuide.lighting}\n\nCharacters:\n${charDesc.length ? charDesc.join(", ") : "(main characters)"}\n\nScene:\n${v.setting || scene.image_prompt || scene.narration || "(describe the main event)"}${v.action ? ", " + v.action : ""}${educationalElements}\n\nMood:\n${v.mood || ""}\n\nTime:\n${v.time_of_day || ""}\n\nComposition:\nFull bleed illustration. The scene fills the entire image edge to edge with no borders, no frames, no white margins, no vignette, no painted border, no canvas edges showing. Centered subject, cinematic framing.\n\nAbsolutely no text, letters, words, labels, captions, signs, symbols, numbers, or writing of any kind anywhere in the image. No watermark, no border, no frame, no white edges.\n`;
 }
 
-export function generateImagePromptsForStory(
-  story: Pick<Story, "pages" | "style_guide" | "characters">
-): { page_id: string; prompt: string }[] {
-  const allPages = collectAllPages(story.pages);
-  return allPages.map((page) => ({
-    page_id: page.page_id,
-    prompt: buildImagePrompt(page, story.style_guide, story.characters),
-  }));
-}
-
-const EMPTY_STYLE_GUIDE: StyleGuide = {
-  art_style: "watercolor, soft edges, storybook style",
-  color_palette: "vivid blues, greens, and grays",
-  lighting: "dramatic, stormy, with bright highlights",
-};
-
 export const TORNADO_STORY: Omit<Story, "narrator"> = {
   title: "Into the Storm: How Tornadoes Are Born",
   topic: "tornadoes",
-  style_guide: EMPTY_STYLE_GUIDE,
+  style_guide: {
+    art_style: "watercolor, soft edges, storybook style",
+    color_palette: "vivid blues, greens, and grays",
+    lighting: "dramatic, stormy, with bright highlights",
+  },
   characters: [],
   pages: [
     {

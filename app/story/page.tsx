@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { getReadingOrder, TORNADO_STORY, PYRAMIDS_STORY, type Story, type Page } from "../lib/stories";
+import { topicToSlug } from "../lib/generateUtils";
 import { NarratorChat } from "../components/narrator-chat";
 import { MagnifyingGlass } from "../components/magnifying-glass";
 
@@ -47,6 +48,20 @@ function getGradient(index: number) {
   return PLACEHOLDER_GRADIENTS[index % PLACEHOLDER_GRADIENTS.length];
 }
 
+function stripMarkdown(text: string): string {
+  return text.replace(/\*{1,3}(.*?)\*{1,3}/g, "$1");
+}
+
+function clearPageAudio(pages: Page[]) {
+  for (const p of pages) {
+    p.audio_url = "";
+    if (p.choice) {
+      clearPageAudio(p.choice.option_a.pages);
+      clearPageAudio(p.choice.option_b.pages);
+    }
+  }
+}
+
 export default function StoryPage() {
   const searchParams = useSearchParams();
   const narratorId = searchParams.get("narrator") ?? "mouse";
@@ -88,7 +103,7 @@ export default function StoryPage() {
       setError(null);
       try {
         // Check for cached story first
-        const slug = topic.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+        const slug = topicToSlug(topic);
         const cached = await fetch(`/stories/${slug}/story.json`, { signal: controller.signal });
         if (cached.ok) {
           const data: Story = await cached.json();
@@ -96,16 +111,7 @@ export default function StoryPage() {
           const cachedVoice = data.narrator?.voice_id;
           if (cachedVoice && cachedVoice !== voiceId) {
             console.log(`[story] Cached story voice mismatch (cached: ${data.narrator.character}, selected: ${narratorId}) — audio will regenerate on-demand`);
-            function clearAudio(pages: import("../lib/stories").Page[]) {
-              for (const p of pages) {
-                p.audio_url = "";
-                if (p.choice) {
-                  clearAudio(p.choice.option_a.pages);
-                  clearAudio(p.choice.option_b.pages);
-                }
-              }
-            }
-            clearAudio(data.pages);
+            clearPageAudio(data.pages);
           }
           console.log(`[story] Loaded cached story for "${topic}"`);
           setStory(data);
@@ -346,7 +352,7 @@ export default function StoryPage() {
           {/* Narration text */}
           <div className="rounded-2xl bg-white p-6 md:p-8 shadow-sm border border-indigo-100">
             <p className="text-lg leading-relaxed text-gray-700">
-              {currentPage.narration}
+              {stripMarkdown(currentPage.narration)}
             </p>
           </div>
 

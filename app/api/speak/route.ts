@@ -1,15 +1,10 @@
 import { NextRequest } from "next/server";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
+import { resolveVoiceId } from "../../lib/elevenlabs";
 
 const client = new ElevenLabsClient({
   apiKey: process.env.ELEVENLABS_API_KEY,
 });
-
-const VOICE_MAP: Record<string, string | undefined> = {
-  mouse: process.env.ELEVENLABS_MOUSE_VOICE_ID,
-  rabbit: process.env.ELEVENLABS_RABBIT_VOICE_ID,
-  owl: process.env.ELEVENLABS_OWL_VOICE_ID,
-};
 
 export async function POST(req: NextRequest) {
   const { text, narrator, voiceId: customVoiceId } = (await req.json()) as {
@@ -18,10 +13,7 @@ export async function POST(req: NextRequest) {
     voiceId?: string;
   };
 
-  const voiceId =
-    customVoiceId ||
-    (narrator && VOICE_MAP[narrator]) ||
-    process.env.ELEVENLABS_MOUSE_VOICE_ID!;
+  const voiceId = resolveVoiceId(narrator ?? "mouse", customVoiceId);
 
   const audioStream = await client.textToSpeech.stream(voiceId, {
     text,

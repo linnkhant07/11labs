@@ -2,17 +2,13 @@ import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { v2 as cloudinary } from "cloudinary";
 import type { Story, Page } from "./stories";
-import { collectAllChoices } from "./generateUtils";
+import { collectAllChoices, topicToSlug } from "./generateUtils";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
   api_key: process.env.CLOUDINARY_API_KEY!,
   api_secret: process.env.CLOUDINARY_API_SECRET!,
 });
-
-export function topicToSlug(topic: string): string {
-  return topic.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
-}
 
 async function uploadImageToCloudinary(
   base64DataUrl: string,
@@ -40,17 +36,17 @@ export async function saveStoryToDisk(story: Story, allPages: Page[]): Promise<v
         const publicId = `educate/stories/${slug}/${version}/${page.page_id}`;
         page.image_url = await uploadImageToCloudinary(page.image_url, publicId);
       }),
-    ...allChoices.flatMap((choice) => [
+    ...allChoices.flatMap((choice, i) => [
       choice.option_a.image_url.startsWith("data:")
         ? uploadImageToCloudinary(
             choice.option_a.image_url,
-            `educate/stories/${slug}/${version}/choice-${allChoices.indexOf(choice)}-a`
+            `educate/stories/${slug}/${version}/choice-${i}-a`
           ).then((url) => { choice.option_a.image_url = url; })
         : Promise.resolve(),
       choice.option_b.image_url.startsWith("data:")
         ? uploadImageToCloudinary(
             choice.option_b.image_url,
-            `educate/stories/${slug}/${version}/choice-${allChoices.indexOf(choice)}-b`
+            `educate/stories/${slug}/${version}/choice-${i}-b`
           ).then((url) => { choice.option_b.image_url = url; })
         : Promise.resolve(),
     ]),
