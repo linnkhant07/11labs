@@ -4,6 +4,16 @@ import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { getReadingOrder, type Story, type Page } from "../lib/stories";
 
+function clearAudioUrls(pages: Page[]): void {
+  for (const page of pages) {
+    page.audio_url = "";
+    if (page.choice) {
+      clearAudioUrls(page.choice.option_a.pages);
+      clearAudioUrls(page.choice.option_b.pages);
+    }
+  }
+}
+
 const PLACEHOLDER_GRADIENTS = [
   "from-sky-300 to-cyan-500",
   "from-slate-400 to-zinc-600",
@@ -45,6 +55,12 @@ export default function StoryPage() {
         const cached = await fetch(`/stories/${slug}/story.json`).catch(() => null);
         if (cached?.ok) {
           const data: Story = await cached.json();
+          // If the cached story used a different narrator, clear pre-baked audio so
+          // the /api/speak fallback regenerates it on demand with the correct voice
+          if (data.narrator.character !== narratorId) {
+            clearAudioUrls(data.pages);
+            data.narrator.character = narratorId as Story["narrator"]["character"];
+          }
           if (!cancelled) setStory(data);
           return;
         }
