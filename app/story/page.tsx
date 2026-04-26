@@ -339,8 +339,8 @@ export default function StoryPage() {
                   className="transition-colors duration-150"
                   style={{
                     backgroundColor: i === activeWordIndex ? "#fee8d3" : "transparent",
-                    borderRadius: i === activeWordIndex ? "4px" : undefined,
-                    padding: i === activeWordIndex ? "1px 2px" : undefined,
+                    borderRadius: "4px",
+                    padding: "1px 2px",
                   }}
                 >
                   {stripMarkdown(wt.word)}{" "}
