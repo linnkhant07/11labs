@@ -72,7 +72,7 @@ export default function StoryPage() {
   const [hasFinishedReading, setHasFinishedReading] = useState(false);
   const [chatActive, setChatActive] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [activeWordIndex, setActiveWordIndex] = useState(-1);
+  const narrationRef = useRef<HTMLParagraphElement | null>(null);
   const rafRef = useRef<number | null>(null);
 
   const narrator = NARRATORS[narratorId];
@@ -132,31 +132,62 @@ export default function StoryPage() {
   const needsChoice = currentPage?.choice && !branchChoices[currentPage.page_id];
 
   // --- Audio playback ---
-  const stopAudio = useCallback(() => {
+  const clearHighlights = useCallback(() => {
+    narrationRef.current?.querySelectorAll<HTMLElement>("[data-widx]").forEach((el) => {
+      el.style.backgroundColor = "transparent";
+      el.style.color = "inherit";
+    });
+  }, []);
+
+  const stopAudio = useCallback((preserveHighlights = false) => {
     if (audioRef.current) {
       audioRef.current.pause();
-      audioRef.current = null;
+      if (!preserveHighlights) audioRef.current = null;
     }
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
-    setActiveWordIndex(-1);
+    if (!preserveHighlights) clearHighlights();
     setPlaying(false);
-  }, []);
+  }, [clearHighlights]);
 
   const startWordTracking = useCallback((audio: HTMLAudioElement, timestamps: Page["timestamps"]) => {
     if (!timestamps?.length) return;
+    let lastIdx = -2;
     const tick = () => {
       const t = audio.currentTime;
       let idx = -1;
       for (let i = 0; i < timestamps.length; i++) {
         if (t >= timestamps[i].start && t <= timestamps[i].end + 0.05) { idx = i; break; }
       }
-      setActiveWordIndex(idx);
+      if (idx !== lastIdx && idx >= 0 && narrationRef.current) {
+        lastIdx = idx;
+        narrationRef.current.querySelectorAll<HTMLElement>("[data-widx]").forEach((el) => {
+          const wi = Number(el.dataset.widx);
+          if (wi === idx) {
+            el.style.backgroundColor = "#fee8d3";
+            el.style.color = "#f09237";
+          } else if (wi > idx) {
+            el.style.backgroundColor = "transparent";
+            el.style.color = "#b4b4b4";
+          } else {
+            el.style.backgroundColor = "transparent";
+            el.style.color = "inherit";
+          }
+        });
+      }
       if (!audio.paused) rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
   }, []);
 
   const playNarration = useCallback(async (page: Page) => {
+    // Resume paused audio for this page rather than restarting
+    if (audioRef.current && audioRef.current.paused && !audioRef.current.ended) {
+      setPlaying(true);
+      await audioRef.current.play();
+      startWordTracking(audioRef.current, page.timestamps);
+      return;
+    }
+
     stopAudio();
     setHasFinishedReading(false);
 
@@ -164,7 +195,7 @@ export default function StoryPage() {
       setPlaying(true);
       const audio = new Audio(page.audio_url);
       audioRef.current = audio;
-      audio.onended = () => { setPlaying(false); setHasFinishedReading(true); setActiveWordIndex(-1); audioRef.current = null; if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+      audio.onended = () => { setPlaying(false); setHasFinishedReading(true); clearHighlights(); audioRef.current = null; if (rafRef.current) cancelAnimationFrame(rafRef.current); };
       await audio.play();
       startWordTracking(audio, page.timestamps);
       return;
@@ -197,7 +228,7 @@ export default function StoryPage() {
   }, [stopAudio, narratorId, voiceId]);
 
   function handleSpeak() {
-    if (playing) { stopAudio(); return; }
+    if (playing) { stopAudio(true); return; }
     if (currentPage) playNarration(currentPage);
   }
 
@@ -331,17 +362,14 @@ export default function StoryPage() {
           </div>
 
           {/* Narration text with word highlighting */}
-          <p className="w-full text-[14px] leading-[1.65] text-black md:text-[17px] md:leading-[1.8]" style={{ fontFamily: "var(--font-abeezee), sans-serif" }}>
+          <p ref={narrationRef} className="w-full text-[14px] leading-[1.65] text-black md:text-[17px] md:leading-[1.8]" style={{ fontFamily: "var(--font-abeezee), sans-serif" }}>
             {currentPage.timestamps?.length ? (
               currentPage.timestamps.map((wt, i) => (
                 <span
                   key={i}
-                  className="transition-colors duration-150"
-                  style={{
-                    backgroundColor: i === activeWordIndex ? "#fee8d3" : "transparent",
-                    borderRadius: "4px",
-                    padding: "1px 2px",
-                  }}
+                  data-widx={i}
+                  className="transition-colors duration-100"
+                  style={{ borderRadius: "4px", padding: "1px 2px" }}
                 >
                   {stripMarkdown(wt.word)}{" "}
                 </span>
