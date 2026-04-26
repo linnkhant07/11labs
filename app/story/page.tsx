@@ -84,6 +84,8 @@ export default function StoryPage() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nudgeCount = useRef(0);
+  const [activeWordIndex, setActiveWordIndex] = useState(-1);
+  const rafRef = useRef<number | null>(null);
 
   const narrator = NARRATORS[narratorId];
   const voiceId = getVoiceId(narratorId, customVoiceId);
@@ -147,7 +149,23 @@ export default function StoryPage() {
       audioRef.current.pause();
       audioRef.current = null;
     }
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    setActiveWordIndex(-1);
     setPlaying(false);
+  }, []);
+
+  const startWordTracking = useCallback((audio: HTMLAudioElement, timestamps: Page["timestamps"]) => {
+    if (!timestamps?.length) return;
+    const tick = () => {
+      const t = audio.currentTime;
+      let idx = -1;
+      for (let i = 0; i < timestamps.length; i++) {
+        if (t >= timestamps[i].start && t <= timestamps[i].end + 0.05) { idx = i; break; }
+      }
+      setActiveWordIndex(idx);
+      if (!audio.paused) rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
   }, []);
 
   const playNarration = useCallback(async (page: Page) => {
@@ -158,8 +176,9 @@ export default function StoryPage() {
       setPlaying(true);
       const audio = new Audio(page.audio_url);
       audioRef.current = audio;
-      audio.onended = () => { setPlaying(false); setHasFinishedReading(true); audioRef.current = null; };
+      audio.onended = () => { setPlaying(false); setHasFinishedReading(true); setActiveWordIndex(-1); audioRef.current = null; if (rafRef.current) cancelAnimationFrame(rafRef.current); };
       await audio.play();
+      startWordTracking(audio, page.timestamps);
       return;
     }
 
@@ -366,9 +385,25 @@ export default function StoryPage() {
             </div>
           </div>
 
-          {/* Narration text */}
+          {/* Narration text with word highlighting */}
           <p className="w-full text-[14px] leading-[1.65] text-black md:text-[17px] md:leading-[1.8]" style={{ fontFamily: "var(--font-abeezee), sans-serif" }}>
-            {stripMarkdown(currentPage.narration)}
+            {currentPage.timestamps?.length ? (
+              currentPage.timestamps.map((wt, i) => (
+                <span
+                  key={i}
+                  className="transition-colors duration-150"
+                  style={{
+                    backgroundColor: i === activeWordIndex ? "#fee8d3" : "transparent",
+                    borderRadius: i === activeWordIndex ? "4px" : undefined,
+                    padding: i === activeWordIndex ? "1px 2px" : undefined,
+                  }}
+                >
+                  {stripMarkdown(wt.word)}{" "}
+                </span>
+              ))
+            ) : (
+              stripMarkdown(currentPage.narration)
+            )}
           </p>
 
           {/* Re-engagement nudge */}
