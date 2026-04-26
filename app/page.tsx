@@ -8,34 +8,44 @@ import {
 } from "./lib/useConversationalPtt";
 
 const NARRATORS = [
-  { id: "fox", emoji: "\ud83e\udd8a", name: "Finn the Fox", color: "from-orange-400 to-amber-500" },
-  { id: "owl", emoji: "\ud83e\udd89", name: "Oliver the Owl", color: "from-indigo-400 to-purple-500" },
+  { id: "mouse", emoji: "🐭", name: "Milo the Mouse" },
+  { id: "rabbit", emoji: "🐰", name: "Rosie the Rabbit" },
+  { id: "owl", emoji: "🦉", name: "Oliver the Owl" },
 ] as const;
 
+const SUGGESTED_TOPICS = [
+  { emoji: "🌪️", name: "Tornadoes" },
+  { emoji: "🚧", name: "Pyramids" },
+  { emoji: "🌋", name: "Volcanoes" },
+  { emoji: "🦖", name: "Dinosaurs" },
+  { emoji: "🚀", name: "Space" },
+  { emoji: "🌊", name: "Ocean" },
+];
+
 type NarratorId = (typeof NARRATORS)[number]["id"];
-type OnboardingStep = "character" | "ready";
 type CloneState = "idle" | "recording" | "uploading" | "success" | "error";
 
 const MIN_RECORD_SECONDS = 3;
 const MIN_RECORD_BYTES = 4_000;
 
 const CHARACTER_ALIASES: Record<NarratorId, string[]> = {
-  fox: ["fox", "finn", "finn fox", "finn the fox", "fiona", "fiona fox"],
-  owl: ["owl", "oliver", "oliver owl", "oliver the owl"],
+  mouse: ["mouse", "milo"],
+  rabbit: ["rabbit", "rosie", "bunny"],
+  owl: ["owl", "oliver"],
 };
 
 const CLIENT_TOOLS: ClientToolDeclaration[] = [
   {
     name: "select_character",
     description:
-      "Call this when the user names the narrator they want. The character must be one of: Finn the Fox or Oliver the Owl. Always call this tool when the user picks — never just acknowledge verbally.",
+      "Call this when the user names the narrator they want. The character must be one of: Milo the Mouse, Rosie the Rabbit, or Oliver the Owl. Always call this tool when the user picks — never just acknowledge verbally.",
     parameters: {
       type: "object",
       properties: {
         character: {
           type: "string",
           description:
-            "The name the user said. Accepts variations like 'fox', 'finn', 'finn the fox', 'owl', 'oliver'.",
+            "The name the user said. Accepts variations like 'mouse', 'milo', 'rabbit', 'rosie', 'bunny', 'owl', 'oliver'.",
         },
       },
       required: ["character"],
@@ -43,10 +53,14 @@ const CLIENT_TOOLS: ClientToolDeclaration[] = [
     expects_response: true,
   },
 ];
+
 export default function Home() {
   const router = useRouter();
+
   const [narrator, setNarrator] = useState<NarratorId | null>(null);
-  const [step, setStep] = useState<OnboardingStep>("character");
+  const [topic, setTopic] = useState("");
+  const [demoMode, setDemoMode] = useState(true);
+
   const [agentPrompt, setAgentPrompt] = useState(
     "Press Start Voice Onboarding so I can help you choose a narrator."
   );
@@ -65,6 +79,14 @@ export default function Home() {
   const recordStreamRef = useRef<MediaStream | null>(null);
   const recordTimerRef = useRef<number | null>(null);
   const recordStartRef = useRef<number>(0);
+  const topicRef = useRef(topic);
+  const demoModeRef = useRef(demoMode);
+  useEffect(() => {
+    topicRef.current = topic;
+  }, [topic]);
+  useEffect(() => {
+    demoModeRef.current = demoMode;
+  }, [demoMode]);
 
   useEffect(() => {
     const saved = localStorage.getItem("clonedVoiceId");
@@ -75,12 +97,6 @@ export default function Home() {
   const selectedNarrator = useMemo(
     () => NARRATORS.find((n) => n.id === narrator) ?? null,
     [narrator]
-  );
-  const beginStory = useCallback(
-    (chosenNarrator: NarratorId) => {
-      router.push(`/story?narrator=${chosenNarrator}`);
-    },
-    [router]
   );
 
   const narratorDisplayName = useCallback((id: NarratorId): string => {
@@ -112,9 +128,25 @@ export default function Home() {
     return null;
   }
 
+  const navigateToStory = useCallback(
+    (chosenNarrator: NarratorId, chosenTopic: string) => {
+      const params = new URLSearchParams({
+        topic: chosenTopic.trim(),
+        narrator: chosenNarrator,
+        ...(demoModeRef.current ? { demo: "1" } : {}),
+      });
+      router.push(`/story?${params.toString()}`);
+    },
+    [router]
+  );
+
+  function handleStart() {
+    if (!narrator || !topic.trim()) return;
+    navigateToStory(narrator, topic);
+  }
+
   const {
     connect,
-    connectForNarrator,
     disconnect,
     startTalking,
     stopTalking,
@@ -141,34 +173,29 @@ export default function Home() {
           void pushTerminalDebug("character_mapping_failed", characterValue || "(empty)");
           return {
             result:
-              "Invalid character. Expected one of Finn the Fox or Oliver the Owl.",
+              "Invalid character. Expected one of Milo the Mouse, Rosie the Rabbit, or Oliver the Owl.",
             isError: true,
           };
         }
 
         void pushTerminalDebug("character_mapped", `${characterValue} -> ${characterId}`);
         setNarrator(characterId);
-        setStep("ready");
-        setAgentPrompt(
-          `${narratorDisplayName(characterId)} selected. Transferring to ${narratorDisplayName(characterId)}...`
-        );
 
-        queueMicrotask(async () => {
-          try {
-            await disconnect();
-            void pushTerminalDebug("transfer_disconnected", "onboarding_agent");
-            await connectForNarrator(characterId);
-            void pushTerminalDebug("transfer_connected", `narrator=${characterId}`);
-            void pushTerminalDebug("navigation_handoff", `/story?narrator=${characterId}`);
-            beginStory(characterId);
-          } catch (transferError) {
-            const message =
-              transferError instanceof Error
-                ? transferError.message
-                : "Failed to transfer to narrator agent.";
-            void pushTerminalDebug("transfer_failed", message);
-          }
-        });
+        const currentTopic = topicRef.current.trim();
+        if (currentTopic) {
+          setAgentPrompt(`${narratorDisplayName(characterId)} selected. Starting story...`);
+          queueMicrotask(() => {
+            void pushTerminalDebug(
+              "navigation_handoff",
+              `/story?narrator=${characterId}&topic=${currentTopic}`
+            );
+            navigateToStory(characterId, currentTopic);
+          });
+        } else {
+          setAgentPrompt(
+            `${narratorDisplayName(characterId)} selected. Pick a topic to start your adventure.`
+          );
+        }
 
         return { result: `Character selected: ${characterId}` };
       }
@@ -323,18 +350,8 @@ export default function Home() {
     };
   }, []);
 
-  function selectNarratorFromCard(id: NarratorId) {
-    setAgentPrompt(
-      `Voice-only mode is active. Please say "${narratorDisplayName(
-        id
-      )}" and let the agent choose via tool call.`
-    );
-  }
-
   async function handleStartVoice() {
     setHasStartedVoice(true);
-    setStep("character");
-    setNarrator(null);
     setAgentPrompt(
       "Connecting... once ready, hold Cmd and speak. Agent should call select_character."
     );
@@ -343,7 +360,7 @@ export default function Home() {
     if (!startAgentId) {
       void pushTerminalDebug("missing_default_agent_id");
       setAgentPrompt(
-        "Missing default agent ID. Set NEXT_PUBLIC_ELEVENLABS_AGENT_ID or narrator-specific IDs."
+        "Missing default agent ID. Set NEXT_PUBLIC_ELEVENLABS_AGENT_ID."
       );
       return;
     }
@@ -395,13 +412,43 @@ export default function Home() {
             educ-ATE
           </h1>
           <p className="text-lg text-indigo-600">
-            Talk to the onboarding agent. It will select your narrator by tool call.
+            Pick a topic and a narrator — or talk to the onboarding agent and let it choose.
           </p>
         </div>
 
+        {/* Topic input */}
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-widest text-indigo-400">
+            What do you want to learn about?
+          </h2>
+          <input
+            type="text"
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            placeholder="Type anything... tornadoes, dinosaurs, black holes..."
+            className="w-full rounded-2xl border-2 border-gray-200 bg-white px-5 py-4 text-lg text-gray-800 placeholder-gray-400 outline-none transition-all focus:border-indigo-400 focus:shadow-md"
+          />
+          <div className="flex flex-wrap gap-2">
+            {SUGGESTED_TOPICS.map((t) => (
+              <button
+                key={t.name}
+                onClick={() => setTopic(t.name)}
+                className={`rounded-full border px-3 py-1.5 text-sm transition-all ${
+                  topic === t.name
+                    ? "border-indigo-400 bg-indigo-50 text-indigo-700"
+                    : "border-gray-200 bg-white text-gray-600 hover:border-indigo-300"
+                }`}
+              >
+                {t.emoji} {t.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Voice Onboarding panel */}
         <div className="space-y-4 rounded-2xl border border-indigo-200 bg-white/90 p-5 shadow-sm">
           <h2 className="text-sm font-semibold uppercase tracking-widest text-indigo-500">
-            Voice Onboarding
+            Voice Onboarding (optional)
           </h2>
           <p className="text-sm text-gray-700">{agentPrompt}</p>
           <div className="flex flex-wrap gap-3">
@@ -415,16 +462,15 @@ export default function Home() {
           </div>
           <div className="space-y-1 text-sm text-gray-700">
             <p>
-              <span className="font-semibold">Controls:</span> Hold <kbd className="rounded border px-1 py-0.5">Cmd</kbd> to talk, press <kbd className="rounded border px-1 py-0.5">Option</kbd> to stop.
+              <span className="font-semibold">Controls:</span> Hold{" "}
+              <kbd className="rounded border px-1 py-0.5">Cmd</kbd> to talk, press{" "}
+              <kbd className="rounded border px-1 py-0.5">Option</kbd> to stop.
             </p>
             <p>
               <span className="font-semibold">You said:</span> {lastUserTranscript || "..."}
             </p>
             <p>
               <span className="font-semibold">Agent said:</span> {lastAgentTranscript || "..."}
-            </p>
-            <p>
-              <span className="font-semibold">Step:</span> {step}
             </p>
             {error ? (
               <p className="text-red-600">
@@ -439,15 +485,16 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Narrator grid + Clone-your-buddy */}
         <div className="space-y-3">
           <h2 className="text-sm font-semibold uppercase tracking-widest text-indigo-400">
-            Characters
+            Choose your narrator
           </h2>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {NARRATORS.map((n) => (
               <button
                 key={n.id}
-                onClick={() => selectNarratorFromCard(n.id)}
+                onClick={() => setNarrator(n.id)}
                 type="button"
                 className={`rounded-2xl border-2 p-5 text-center transition-all ${
                   narrator === n.id
@@ -457,7 +504,6 @@ export default function Home() {
               >
                 <span className="text-5xl">{n.emoji}</span>
                 <p className="mt-2 text-sm font-semibold text-gray-800">{n.name}</p>
-                <p className="mt-1 text-[11px] text-gray-500">voice picks this</p>
               </button>
             ))}
 
@@ -509,11 +555,38 @@ export default function Home() {
           </div>
         </div>
 
-        {selectedNarrator ? (
-          <p className="text-center text-sm font-semibold text-indigo-700">
-            Selected narrator: {selectedNarrator.name}
-          </p>
-        ) : null}
+        {/* Start button */}
+        <button
+          onClick={handleStart}
+          disabled={!narrator || !topic.trim()}
+          className={`w-full rounded-full py-4 text-lg font-bold transition-all ${
+            narrator && topic.trim()
+              ? "bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg hover:shadow-xl hover:scale-[1.01]"
+              : "bg-gray-200 text-gray-400 cursor-not-allowed"
+          }`}
+        >
+          Start Your Adventure
+          {selectedNarrator ? ` with ${selectedNarrator.name}` : ""}
+        </button>
+
+        {/* Demo mode toggle */}
+        <div className="flex items-center justify-center gap-3">
+          <button
+            onClick={() => setDemoMode(!demoMode)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              demoMode ? "bg-indigo-500" : "bg-gray-300"
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                demoMode ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
+          </button>
+          <span className="text-sm text-gray-500">
+            {demoMode ? "Demo mode (hardcoded, no credits)" : "Live mode (Gemini generation)"}
+          </span>
+        </div>
       </div>
     </div>
   );

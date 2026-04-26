@@ -22,7 +22,7 @@ export interface Story {
   topic: string;
   narrator: {
     type: "animal" | "custom";
-    character: "fox" | "owl" | "bear" | "custom";
+    character: "mouse" | "rabbit" | "owl" | "custom";
     voice_id: string;
   };
   pages: Page[];
@@ -119,6 +119,109 @@ export const TORNADO_STORY: Omit<Story, "narrator"> = {
   cyu: [
     { type: "voice", question: "What two air masses collide to create a supercell?" },
     { type: "voice", question: "What scale do scientists use to measure tornado strength?" },
+  ],
+};
+
+export const PYRAMIDS_STORY: Omit<Story, "narrator"> = {
+  title: "Secrets of the Pyramids: Ancient Wonders of Egypt",
+  topic: "pyramids",
+  pages: [
+    {
+      page_id: "p1",
+      narration:
+        "Imagine standing in the scorching Egyptian desert nearly 4,500 years ago. Thousands of workers are hauling massive limestone blocks — each one heavier than a car — across the sand. They are building the Great Pyramid of Giza, a tomb for Pharaoh Khufu. When finished, it stood 481 feet tall, making it the tallest structure on Earth for over 3,800 years. No cranes, no trucks, no machines — just human strength, clever engineering, and incredible teamwork.",
+      image_prompt: "ancient Egyptian workers building the Great Pyramid under blazing sun, hauling limestone blocks",
+      image_url: "",
+      audio_url: "",
+      hotspots: [],
+      choice: null,
+    },
+    {
+      page_id: "p2",
+      narration:
+        "But why build something so enormous? The ancient Egyptians believed that when a pharaoh died, their spirit needed a safe place to live forever. The pyramid was that home — filled with food, gold, furniture, and even boats for the pharaoh's journey to the afterlife. Deep inside the pyramid, hidden chambers and narrow passageways were designed to protect the pharaoh's mummy from tomb robbers. Some of these secret rooms were not discovered until thousands of years later!",
+      image_prompt: "cross-section of a pyramid showing hidden chambers, passageways, and the pharaoh's burial room with treasures",
+      image_url: "",
+      audio_url: "",
+      hotspots: [],
+      choice: null,
+    },
+    {
+      page_id: "p3",
+      narration:
+        "Here is one of the biggest mysteries in history: how did the Egyptians actually move those giant blocks? Each block weighed about 2.5 tons — that is as heavy as two cars stacked on top of each other! Scientists and historians have been debating this question for centuries, and they have come up with some fascinating theories.",
+      image_prompt: "massive limestone block on wooden sled being pulled by workers, with water being poured on sand in front",
+      image_url: "",
+      audio_url: "",
+      hotspots: [],
+      choice: {
+        question: "How do you think the Egyptians moved those massive blocks?",
+        option_a: {
+          label: "Ramps and sleds on wet sand",
+          pages: [
+            {
+              page_id: "p4a",
+              narration:
+                "Many scientists believe the Egyptians built long ramps out of mud bricks and rubble. Workers placed the stone blocks on wooden sleds, then poured water on the sand in front to make it slippery — cutting the friction in half! A team of workers would pull the sled up the ramp, block by block. As the pyramid grew taller, the ramp grew longer. It was slow, exhausting work, but it was brilliant engineering for a world without machines.",
+              image_prompt: "workers pulling a stone block up a long ramp alongside a half-built pyramid, water glistening on sand",
+              image_url: "",
+              audio_url: "",
+              hotspots: [],
+              choice: null,
+            },
+            {
+              page_id: "p5a",
+              narration:
+                "Recent discoveries have made this theory even more convincing. In 2018, archaeologists found a 4,500-year-old ramp at a quarry in Hatnub, Egypt. The ramp had holes on both sides where wooden posts were placed — workers likely used ropes wrapped around these posts to pull blocks uphill even more efficiently. This discovery showed that the ancient Egyptians were even more clever than we imagined!",
+              image_prompt: "archaeologists examining an ancient ramp with wooden post holes at an Egyptian quarry site",
+              image_url: "",
+              audio_url: "",
+              hotspots: [],
+              choice: null,
+            },
+          ],
+        },
+        option_b: {
+          label: "A water channel system inside",
+          pages: [
+            {
+              page_id: "p4b",
+              narration:
+                "Some researchers think the Egyptians might have used water to float the heavy blocks! They may have built channels or canals from the Nile River right up to the construction site. The blocks could have been loaded onto boats or rafts and floated close to where they were needed. The Nile flooded every year, and the Egyptians were masters at controlling water flow.",
+              image_prompt: "limestone blocks floating on wooden rafts through a canal leading to the pyramid construction site, Nile River in background",
+              image_url: "",
+              audio_url: "",
+              hotspots: [],
+              choice: null,
+            },
+            {
+              page_id: "p5b",
+              narration:
+                "In 2024, scientists discovered a hidden branch of the Nile River that once flowed right next to the pyramids at Giza! This ancient waterway has since dried up, but it explains how the Egyptians could have transported millions of stone blocks from quarries far away. The river was their highway — and the pyramids were built right at the loading dock.",
+              image_prompt: "map showing the ancient hidden branch of the Nile flowing past the Giza pyramids",
+              image_url: "",
+              audio_url: "",
+              hotspots: [],
+              choice: null,
+            },
+          ],
+        },
+      },
+    },
+    {
+      page_id: "p6",
+      narration:
+        "The pyramids have stood for nearly 4,500 years — surviving earthquakes, sandstorms, and even tomb robbers. They are the last of the Seven Wonders of the Ancient World still standing. Every block, every passageway, every hidden chamber tells a story about a civilization that dreamed big and built even bigger. Next time you see a picture of the pyramids, remember — you are looking at one of the greatest achievements in all of human history.",
+      image_prompt: "the three Giza pyramids at sunset with the Sphinx in the foreground, golden light",
+      image_url: "",
+      audio_url: "",
+      hotspots: [],
+      choice: null,
+    },
+  ],
+  cyu: [
+    { type: "voice", question: "Why did the Egyptians build pyramids?" },
+    { type: "voice", question: "How heavy was each limestone block in the Great Pyramid?" },
   ],
 };
 
