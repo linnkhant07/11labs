@@ -92,6 +92,21 @@ export default function StoryPage() {
         const cached = await fetch(`/stories/${slug}/story.json`, { signal: controller.signal });
         if (cached.ok) {
           const data: Story = await cached.json();
+          // If cached narrator doesn't match user's pick, clear audio so it regenerates on-demand with the right voice
+          const cachedVoice = data.narrator?.voice_id;
+          if (cachedVoice && cachedVoice !== voiceId) {
+            console.log(`[story] Cached story voice mismatch (cached: ${data.narrator.character}, selected: ${narratorId}) — audio will regenerate on-demand`);
+            function clearAudio(pages: import("../lib/stories").Page[]) {
+              for (const p of pages) {
+                p.audio_url = "";
+                if (p.choice) {
+                  clearAudio(p.choice.option_a.pages);
+                  clearAudio(p.choice.option_b.pages);
+                }
+              }
+            }
+            clearAudio(data.pages);
+          }
           console.log(`[story] Loaded cached story for "${topic}"`);
           setStory(data);
           return;
