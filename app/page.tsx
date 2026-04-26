@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { WaveformChat } from "./components/waveform-chat";
 import { useNarrator } from "./components/narrator-context";
 import { NARRATORS, isNarratorId, type NarratorId } from "./lib/narrators";
 
@@ -61,8 +62,14 @@ const LIBRARY: LibraryItem[] = [
 
 export default function Home() {
   const router = useRouter();
-  const { setNarrator } = useNarrator();
+  const { narratorId, hasChosen, libraryId, setNarrator } = useNarrator();
   const [selected, setSelected] = useState<NarratorOption["id"] | null>(null);
+
+  // Mirror narrator context into local state. Lets the voice agent's
+  // select_character tool drive the avatar highlight and library unlock.
+  useEffect(() => {
+    if (hasChosen) setSelected(narratorId);
+  }, [hasChosen, narratorId]);
 
   function chooseNarrator(id: NarratorOption["id"]) {
     setSelected(id);
@@ -133,10 +140,20 @@ export default function Home() {
           </div>
           <div className="grid w-full grid-cols-2 gap-7 sm:grid-cols-3 lg:grid-cols-4">
             {LIBRARY.map((item) => (
-              <LibraryCard key={item.id} item={item} disabled={!selected} onSelect={() => handleStart(item)} />
+              <LibraryCard
+                key={item.id}
+                item={item}
+                disabled={!selected}
+                selected={libraryId === item.id}
+                onSelect={() => handleStart(item)}
+              />
             ))}
           </div>
         </section>
+      </div>
+
+      <div className="fixed bottom-6 right-6 z-50 md:bottom-8 md:right-8">
+        <WaveformChat />
       </div>
     </main>
   );
@@ -169,12 +186,26 @@ function NarratorAvatar({ narrator, selected, onSelect }: { narrator: NarratorOp
   );
 }
 
-function LibraryCard({ item, disabled, onSelect }: { item: LibraryItem; disabled?: boolean; onSelect: () => void }) {
+function LibraryCard({
+  item,
+  disabled,
+  selected,
+  onSelect,
+}: {
+  item: LibraryItem;
+  disabled?: boolean;
+  selected?: boolean;
+  onSelect: () => void;
+}) {
   return (
     <button
       onClick={onSelect}
       disabled={disabled}
-      className="group flex aspect-[595/842] w-full flex-col items-center justify-center gap-6 overflow-hidden rounded-[16px] bg-[#fef9f3] px-6 py-4 shadow-[2px_2px_20px_rgba(0,0,0,0.1)] transition-transform hover:scale-[1.02] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+      className={`group flex aspect-[595/842] w-full flex-col items-center justify-center gap-6 overflow-hidden rounded-[16px] bg-[#fef9f3] px-6 py-4 transition-transform hover:scale-[1.02] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 ${
+        selected
+          ? "ring-2 ring-[#f09237] shadow-[2px_2px_20px_#f29337]"
+          : "shadow-[2px_2px_20px_rgba(0,0,0,0.1)]"
+      }`}
     >
       {item.isCreate ? (
         <div className="flex size-[112px] items-center justify-center rounded-full bg-[#f09237] shadow-[2px_2px_20px_rgba(0,0,0,0.15)] md:size-[128px]">

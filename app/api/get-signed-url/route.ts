@@ -1,8 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
+    const role = req.nextUrl.searchParams.get("role");
+    const agentId =
+      role === "narrator"
+        ? process.env.NEXT_PUBLIC_ELEVENLABS_NARRATOR_AGENT_ID ||
+          process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID
+        : process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
+    console.log("[get-signed-url] request", { role: role ?? "default", agentId });
+
     const response = await fetch(
       `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${agentId}`,
       {
@@ -17,7 +24,12 @@ export async function GET() {
     }
 
     const data = await response.json();
-    return NextResponse.json({ signedUrl: data.signed_url });
+    console.log("[get-signed-url] success", { role: role ?? "default", agentId });
+    return NextResponse.json({
+      signedUrl: data.signed_url,
+      role: role ?? "default",
+      agentId,
+    });
   } catch (error) {
     console.error("Failed to get signed URL:", error);
     return NextResponse.json(

@@ -26,8 +26,10 @@ type NarratorContextValue = {
   customVoiceId: string | null;
   info: NarratorInfo;
   hasChosen: boolean;
+  libraryId: string | null;
   setNarrator: (id: NarratorId) => void;
   setCustomVoice: (voiceId: string | null) => void;
+  setLibraryId: (id: string | null) => void;
 };
 
 const NarratorContext = createContext<NarratorContextValue | null>(null);
@@ -36,6 +38,7 @@ export function NarratorProvider({ children }: { children: React.ReactNode }) {
   const [narratorId, setNarratorState] = useState<NarratorId>(DEFAULT_NARRATOR);
   const [customVoiceId, setCustomVoiceState] = useState<string | null>(null);
   const [hasChosen, setHasChosen] = useState(false);
+  const [libraryId, setLibraryIdState] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -67,6 +70,10 @@ export function NarratorProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
+  const setLibraryId = useCallback((id: string | null) => {
+    setLibraryIdState(id);
+  }, []);
+
   const value = useMemo<NarratorContextValue>(
     () => ({
       narratorId,
@@ -74,10 +81,12 @@ export function NarratorProvider({ children }: { children: React.ReactNode }) {
       voiceId: getVoiceId(narratorId, customVoiceId),
       info: NARRATORS[narratorId],
       hasChosen,
+      libraryId,
       setNarrator,
       setCustomVoice,
+      setLibraryId,
     }),
-    [narratorId, customVoiceId, hasChosen, setNarrator, setCustomVoice]
+    [narratorId, customVoiceId, hasChosen, libraryId, setNarrator, setCustomVoice, setLibraryId]
   );
 
   return (
