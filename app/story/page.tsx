@@ -95,6 +95,7 @@ export default function StoryPage() {
     async function generate() {
       setGenerating(true);
       setError(null);
+      const minDelay = new Promise<void>((resolve) => setTimeout(resolve, 2500));
       try {
         const slug = topicToSlug(topic);
         const cached = await fetch(`/stories/${slug}/story.json`, { signal: controller.signal });
@@ -106,7 +107,8 @@ export default function StoryPage() {
             clearPageAudio(data.pages);
           }
           console.log(`[story] Loaded cached story for "${topic}"`);
-          setStory(data);
+          await minDelay;
+          if (!controller.signal.aborted) setStory(data);
           return;
         }
 
@@ -373,7 +375,7 @@ export default function StoryPage() {
           {nudgeText && (
             <div className="w-full cursor-pointer rounded-2xl border-2 border-[#fee8d3] bg-[#fef5ea] p-4 text-center transition-all hover:bg-[#fee8d3]" onClick={() => setNudgeText(null)}>
               <p className="font-grandstander text-[16px] font-medium text-[#f09237]">{narrator.short}: &ldquo;{nudgeText}&rdquo;</p>
-              <p className="mt-1 text-xs text-[#b4b4b4]">Tap to dismiss</p>
+              <p className="mt-1 font-grandstander text-[11px] text-[#c4a882]">Tap to dismiss</p>
             </div>
           )}
 
