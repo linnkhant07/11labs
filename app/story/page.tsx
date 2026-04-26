@@ -194,7 +194,12 @@ function StoryPage() {
     // Resume paused audio for this page rather than restarting
     if (audioRef.current && audioRef.current.paused && !audioRef.current.ended) {
       setPlaying(true);
-      await audioRef.current.play();
+      try {
+        await audioRef.current.play();
+      } catch (err) {
+        setPlaying(false);
+        throw err;
+      }
       startWordTracking(audioRef.current, page.timestamps);
       return;
     }
@@ -207,7 +212,13 @@ function StoryPage() {
       const audio = new Audio(page.audio_url);
       audioRef.current = audio;
       audio.onended = () => { setPlaying(false); setHasFinishedReading(true); clearHighlights(); audioRef.current = null; if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-      await audio.play();
+      try {
+        await audio.play();
+      } catch (err) {
+        setPlaying(false);
+        audioRef.current = null;
+        throw err;
+      }
       startWordTracking(audio, page.timestamps);
       return;
     }
@@ -244,11 +255,40 @@ function StoryPage() {
   }
 
   // --- Auto-narrate when page changes ---
+  // Browsers block audio.play() until a user gesture has been recorded on the
+  // page. If that first attempt rejects, we arm one-shot listeners so the
+  // *next* click/keypress anywhere on the document retries playback. After the
+  // first successful play the browser unlocks autoplay for the rest of the
+  // session, so page 2+ auto-narrate without ever needing the play button.
   useEffect(() => {
     if (!currentPage || generating) return;
     setHasFinishedReading(false);
-    const timeout = setTimeout(() => { playNarration(currentPage); }, 50);
-    return () => { clearTimeout(timeout); stopAudio(); };
+
+    let cancelled = false;
+    const retry = () => {
+      if (cancelled || !currentPage) return;
+      document.removeEventListener("pointerdown", retry);
+      document.removeEventListener("keydown", retry);
+      playNarration(currentPage).catch(() => {});
+    };
+
+    const timeout = setTimeout(async () => {
+      try {
+        await playNarration(currentPage);
+      } catch {
+        if (cancelled) return;
+        document.addEventListener("pointerdown", retry, { once: true });
+        document.addEventListener("keydown", retry, { once: true });
+      }
+    }, 50);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+      document.removeEventListener("pointerdown", retry);
+      document.removeEventListener("keydown", retry);
+      stopAudio();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage?.page_id, generating]);
 
