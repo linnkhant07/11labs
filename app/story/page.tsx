@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { getReadingOrder, TORNADO_STORY, PYRAMIDS_STORY, type Story, type Page } from "../lib/stories";
 import { NarratorChat } from "../components/narrator-chat";
+import { MagnifyingGlass } from "../components/magnifying-glass";
 
 const PLACEHOLDER_GRADIENTS = [
   "from-sky-300 to-cyan-500",
@@ -286,12 +287,30 @@ export default function StoryPage() {
 
       <main className="flex flex-1 flex-col items-center justify-center px-6 py-8">
         <div className="w-full max-w-4xl space-y-6">
-          {/* Illustration placeholder */}
-          <div className={`relative h-64 md:h-80 w-full rounded-3xl bg-gradient-to-br ${getGradient(pageIndex)} flex items-center justify-center shadow-inner overflow-hidden`}>
-            <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_30%_40%,white_0%,transparent_60%)]" />
-            <p className="text-white/70 text-sm font-medium px-8 text-center italic">
-              {currentPage.image_prompt}
-            </p>
+          {/* Illustration */}
+          <div className="relative h-64 md:h-80 w-full rounded-3xl overflow-hidden shadow-inner">
+            {currentPage.image_url ? (
+              <>
+                <img
+                  src={currentPage.image_url}
+                  alt={currentPage.image_prompt}
+                  className="h-full w-full object-cover"
+                />
+                <MagnifyingGlass
+                  imageUrl={currentPage.image_url}
+                  topic={topic}
+                  narration={currentPage.narration}
+                  narrator={narratorId}
+                />
+              </>
+            ) : (
+              <div className={`h-full w-full bg-gradient-to-br ${getGradient(pageIndex)} flex items-center justify-center`}>
+                <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_30%_40%,white_0%,transparent_60%)]" />
+                <p className="text-white/70 text-sm font-medium px-8 text-center italic">
+                  {currentPage.image_prompt}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Narration text */}
