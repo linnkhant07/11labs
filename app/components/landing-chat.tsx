@@ -30,12 +30,28 @@ export function LandingChat({ selected, setSelected }: LandingChatProps) {
       console.error("[LandingChat] Error:", err);
       setError("Something went wrong. Try refreshing.");
     },
+    onConnect: (e) => console.log("[LandingChat] onConnect:", e),
+    onDisconnect: (e) => console.log("[LandingChat] onDisconnect:", e),
+    onModeChange: (e) => console.log("[LandingChat] onModeChange:", e),
+    onConversationMetadata: (e) => console.log("[LandingChat] onConversationMetadata:", e),
+    onMessage: (e) => console.log("[LandingChat] onMessage:", e),
     onAgentToolRequest: (event) => {
-      console.log("[LandingChat] onAgentToolRequest:", event);
+      const name = (event as { tool_name?: string })?.tool_name;
+      if (name === "transfer_to_agent") {
+        console.log("[LandingChat][TRANSFER] transfer_to_agent requested:", event);
+      } else {
+        console.log("[LandingChat] onAgentToolRequest:", event);
+      }
     },
     onAgentToolResponse: (event) => {
-      console.log("[LandingChat] onAgentToolResponse:", event);
+      const name = (event as { tool_name?: string })?.tool_name;
+      if (name === "transfer_to_agent") {
+        console.log("[LandingChat][TRANSFER] transfer_to_agent response:", event);
+      } else {
+        console.log("[LandingChat] onAgentToolResponse:", event);
+      }
     },
+    onDebug: (e) => console.log("[LandingChat] onDebug:", e),
   });
 
   const conversationRef = useRef(conversation);

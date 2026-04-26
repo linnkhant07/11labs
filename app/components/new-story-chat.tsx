@@ -30,6 +30,28 @@ export function NewStoryChat() {
       console.error("[NewStoryChat] Error:", err);
       setError("Something went wrong. Try refreshing.");
     },
+    onConnect: (e) => console.log("[NewStoryChat] onConnect:", e),
+    onDisconnect: (e) => console.log("[NewStoryChat] onDisconnect:", e),
+    onModeChange: (e) => console.log("[NewStoryChat] onModeChange:", e),
+    onConversationMetadata: (e) => console.log("[NewStoryChat] onConversationMetadata:", e),
+    onMessage: (e) => console.log("[NewStoryChat] onMessage:", e),
+    onAgentToolRequest: (event) => {
+      const name = (event as { tool_name?: string })?.tool_name;
+      if (name === "transfer_to_agent") {
+        console.log("[NewStoryChat][TRANSFER] transfer_to_agent requested:", event);
+      } else {
+        console.log("[NewStoryChat] onAgentToolRequest:", event);
+      }
+    },
+    onAgentToolResponse: (event) => {
+      const name = (event as { tool_name?: string })?.tool_name;
+      if (name === "transfer_to_agent") {
+        console.log("[NewStoryChat][TRANSFER] transfer_to_agent response:", event);
+      } else {
+        console.log("[NewStoryChat] onAgentToolResponse:", event);
+      }
+    },
+    onDebug: (e) => console.log("[NewStoryChat] onDebug:", e),
   });
 
   const conversationRef = useRef(conversation);

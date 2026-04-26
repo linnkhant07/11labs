@@ -49,12 +49,38 @@ export const NarratorChat = forwardRef<NarratorChatHandle, NarratorChatProps>(
     const [error, setError] = useState<string | null>(null);
 
     const conversation = useConversation({
-      onConnect: () => onChatStatusChange?.(true),
-      onDisconnect: () => onChatStatusChange?.(false),
+      onConnect: (e) => {
+        console.log("[NarratorChat] onConnect:", e);
+        onChatStatusChange?.(true);
+      },
+      onDisconnect: (e) => {
+        console.log("[NarratorChat] onDisconnect:", e);
+        onChatStatusChange?.(false);
+      },
       onError: (err) => {
         console.error("[NarratorChat] Error:", err);
         setError("Something went wrong. Try again!");
       },
+      onModeChange: (e) => console.log("[NarratorChat] onModeChange:", e),
+      onConversationMetadata: (e) => console.log("[NarratorChat] onConversationMetadata:", e),
+      onMessage: (e) => console.log("[NarratorChat] onMessage:", e),
+      onAgentToolRequest: (event) => {
+        const name = (event as { tool_name?: string })?.tool_name;
+        if (name === "transfer_to_agent") {
+          console.log("[NarratorChat][TRANSFER] transfer_to_agent requested:", event);
+        } else {
+          console.log("[NarratorChat] onAgentToolRequest:", event);
+        }
+      },
+      onAgentToolResponse: (event) => {
+        const name = (event as { tool_name?: string })?.tool_name;
+        if (name === "transfer_to_agent") {
+          console.log("[NarratorChat][TRANSFER] transfer_to_agent response:", event);
+        } else {
+          console.log("[NarratorChat] onAgentToolResponse:", event);
+        }
+      },
+      onDebug: (e) => console.log("[NarratorChat] onDebug:", e),
     });
 
     const conversationRef = useRef(conversation);
