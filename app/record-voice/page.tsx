@@ -13,7 +13,7 @@ export default function RecordVoice() {
   const [name, setName] = useState("Mommy");
 
   return (
-    <main className="relative min-h-screen w-full overflow-hidden bg-gradient-to-b from-[#fcebdc] to-[#fbfffd]">
+    <main className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#fcebdc] to-[#fbfffd]">
       {/* Decorative leaves */}
       <DecorLeaf
         src="/figma/landing/leaf-1.svg"
@@ -34,42 +34,42 @@ export default function RecordVoice() {
         className="left-[2%] top-[42%] hidden md:block"
       />
 
-      <div className="relative mx-auto flex w-full max-w-[1280px] flex-col gap-14 px-6 py-12 md:px-16 md:py-20 lg:px-24">
+      <div className="relative mx-auto flex w-full max-w-[880px] flex-col gap-5 px-6 py-5 md:px-8 md:py-8 md:gap-6">
         {/* Header */}
-        <div className="flex items-center gap-6 md:gap-10">
+        <div className="flex items-center gap-4 md:gap-6">
           <button
             onClick={() => router.back()}
             aria-label="Go back"
-            className="flex size-16 items-center justify-center rounded-full border border-white bg-white shadow-[2px_2px_5px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 md:size-20"
+            className="flex size-10 items-center justify-center rounded-full border border-white bg-white shadow-[2px_2px_5px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 md:size-12"
           >
             <ArrowLeftIcon />
           </button>
-          <h1 className="font-chelsea text-[32px] text-black md:text-[44px]">
+          <h1 className="font-chelsea text-[22px] text-black md:text-[28px]">
             Record a Voice
           </h1>
         </div>
 
         {/* Card */}
-        <section className="flex w-full flex-col gap-10 rounded-[24px] bg-white p-6 shadow-[2px_2px_5px_rgba(0,0,0,0.1)] md:gap-12 md:p-10">
+        <section className="flex w-full flex-col gap-5 rounded-[24px] bg-white p-5 shadow-[2px_2px_5px_rgba(0,0,0,0.1)] md:gap-7 md:px-8 md:py-8">
           {/* Upload Icon */}
-          <div className="flex flex-col gap-6">
-            <label className="font-grandstander text-[22px] font-medium text-black md:text-[26px]">
+          <div className="flex flex-col gap-3">
+            <label className="font-grandstander text-[14px] font-medium text-black md:text-[17px]">
               Upload Icon
             </label>
             <button
               type="button"
               aria-label="Upload icon"
-              className="flex size-[120px] items-center justify-center overflow-hidden rounded-full bg-[#e1e1e1] transition-transform hover:scale-105"
+              className="flex size-[72px] items-center justify-center overflow-hidden rounded-full bg-[#e1e1e1] transition-transform hover:scale-105"
             >
               <ImagePlusIcon />
             </button>
           </div>
 
           {/* Name */}
-          <div className="flex w-full max-w-[604px] flex-col gap-4">
+          <div className="flex w-full max-w-[480px] flex-col gap-2">
             <label
               htmlFor="voice-name"
-              className="font-grandstander text-[24px] font-medium text-black md:text-[28px]"
+              className="font-grandstander text-[14px] font-medium text-black md:text-[17px]"
             >
               Name
             </label>
@@ -78,27 +78,27 @@ export default function RecordVoice() {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-[6px] border border-[#cfcfcf] bg-white p-[14px] text-[20px] font-semibold text-black shadow-[2px_2px_1px_rgba(0,0,0,0.1)] focus:outline-none focus:ring-2 focus:ring-[#f29337]"
+              className="w-full rounded-[6px] border border-[#cfcfcf] bg-white p-3 text-[14px] font-semibold text-black shadow-[2px_2px_1px_rgba(0,0,0,0.1)] focus:outline-none focus:ring-2 focus:ring-[#f29337] md:text-[16px]"
               style={{ fontFamily: "var(--font-nunito), sans-serif" }}
             />
           </div>
 
           {/* Passage */}
-          <div className="flex flex-col gap-8">
-            <p className="font-grandstander text-[24px] font-medium text-black md:text-[28px]">
+          <div className="flex flex-col gap-4">
+            <p className="font-grandstander text-[14px] font-medium text-black md:text-[17px]">
               Read the following passage:
             </p>
             <button
               type="button"
-              className="flex items-center justify-center gap-6 self-start rounded-full bg-[#f09237] px-10 py-[22px] shadow-[2px_8px_0px_0px_#db6c00,2px_2px_20px_0px_rgba(0,0,0,0.1)] transition-transform hover:scale-[1.03] active:translate-y-[2px] active:shadow-[2px_4px_0px_0px_#db6c00,2px_2px_20px_0px_rgba(0,0,0,0.1)]"
+              className="flex items-center justify-center gap-3 self-start rounded-full bg-[#f09237] px-5 py-3 shadow-[2px_4px_0px_0px_#db6c00,2px_2px_20px_0px_rgba(0,0,0,0.1)] transition-transform hover:scale-[1.03] active:translate-y-[2px] active:shadow-[2px_2px_0px_0px_#db6c00,2px_2px_20px_0px_rgba(0,0,0,0.1)]"
             >
               <MicIcon />
-              <span className="font-grandstander text-[26px] font-medium text-white">
+              <span className="font-grandstander text-[14px] font-medium text-white md:text-[17px]">
                 Record
               </span>
             </button>
             <p
-              className="text-[20px] leading-[40px] text-[#585858] md:text-[24px] md:leading-[48px]"
+              className="text-[14px] leading-[1.8] text-[#585858] md:text-[17px] md:leading-[2]"
               style={{ fontFamily: "var(--font-abeezee), sans-serif" }}
             >
               <span className="text-[#f29337]">{PASSAGE_LEAD}</span>
@@ -138,7 +138,7 @@ function DecorLeaf({
 
 function ArrowLeftIcon() {
   return (
-    <div className="relative size-9 overflow-hidden md:size-10">
+    <div className="relative size-5 overflow-hidden md:size-6">
       <div className="absolute inset-[16.67%_45.83%_16.67%_16.67%]">
         <img src="/figma/category/arrow-1.svg" alt="" className="size-full" />
       </div>
@@ -151,7 +151,7 @@ function ArrowLeftIcon() {
 
 function MicIcon() {
   return (
-    <div className="relative size-7 overflow-hidden">
+    <div className="relative size-4 overflow-hidden">
       <div className="absolute inset-[4.17%_33.33%_33.33%_33.33%]">
         <img src="/figma/landing/mic-1.svg" alt="" className="size-full" />
       </div>
@@ -167,7 +167,7 @@ function MicIcon() {
 
 function ImagePlusIcon() {
   return (
-    <div className="relative size-8 overflow-hidden">
+    <div className="relative size-5 overflow-hidden">
       <div className="absolute bottom-3/4 left-[62.5%] right-[4.17%] top-[16.67%]">
         <img src="/figma/record-voice/image-plus-1.svg" alt="" className="size-full" />
       </div>

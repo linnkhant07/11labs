@@ -267,12 +267,12 @@ export default function StoryPage() {
   if (generating) {
     return (
       <main className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#fcebdc] to-white px-6">
-        <div className="text-center space-y-6">
-          <div className="mx-auto inline-block h-16 w-16 animate-spin rounded-full border-4 border-[#f29337]/20 border-t-[#f29337]" />
-          <h2 className="font-chelsea text-[28px] text-black md:text-[36px]">
+        <div className="text-center space-y-4">
+          <div className="mx-auto inline-block h-10 w-10 animate-spin rounded-full border-4 border-[#f29337]/20 border-t-[#f29337]" />
+          <h2 className="font-chelsea text-[18px] text-black md:text-[22px]">
             {narrator.short} is creating your story...
           </h2>
-          <p className="font-grandstander text-[18px] text-[#585858]">About: {topic}</p>
+          <p className="font-grandstander text-[14px] text-[#585858] md:text-[17px]">About: {topic}</p>
         </div>
       </main>
     );
@@ -282,9 +282,9 @@ export default function StoryPage() {
   if (error || !story || !currentPage) {
     return (
       <main className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#fcebdc] to-white px-6">
-        <div className="text-center space-y-6">
-          <p className="font-grandstander text-[20px] text-red-600">{error ?? "Something went wrong"}</p>
-          <a href="/" className="inline-block rounded-full bg-[#f09237] px-8 py-3 font-grandstander text-[18px] font-medium text-white shadow-[2px_4px_0px_0px_#db6c00] transition-transform hover:scale-[1.03]">
+        <div className="text-center space-y-4">
+          <p className="font-grandstander text-[14px] text-red-600 md:text-[17px]">{error ?? "Something went wrong"}</p>
+          <a href="/" className="inline-block rounded-full bg-[#f09237] px-4 py-2.5 font-grandstander text-[13px] font-medium text-white shadow-[2px_4px_0px_0px_#db6c00] transition-transform hover:scale-[1.03] md:text-[15px]">
             Try Again
           </a>
         </div>
