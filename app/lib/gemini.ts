@@ -9,6 +9,7 @@ export interface RawPage {
   page_id: string;
   narration: string;
   image_prompt: string;
+  hotspots?: { object: string }[];
   visual?: PageVisual;
   choice?: {
     question: string;

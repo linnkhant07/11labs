@@ -26,7 +26,12 @@ export function buildImagePrompt(
     .filter((c) => charNames.includes(c.name))
     .map((c) => c.description);
 
-  return `\nChildren's storybook illustration.\n\nStyle:\n${styleGuide.art_style}, ${styleGuide.color_palette}, ${styleGuide.lighting}\n\nCharacters:\n${charDesc.length ? charDesc.join(", ") : "(main characters)"}\n\nScene:\n${v.setting || scene.image_prompt || scene.narration || "(describe the main event)"}${v.action ? ", " + v.action : ""}\n\nMood:\n${v.mood || ""}\n\nTime:\n${v.time_of_day || ""}\n\nComposition:\nFull bleed illustration. The scene fills the entire image edge to edge with no borders, no frames, no white margins, no vignette, no painted border, no canvas edges showing. Centered subject, cinematic framing.\n\nNo text, no watermark, no border, no frame, no white edges.\n`;
+  const hotspotObjects: string[] = (scene.hotspots ?? []).map((h: Hotspot) => h.object).filter(Boolean);
+  const educationalElements = hotspotObjects.length
+    ? `\n\nRequired Background Educational Elements (ALL THREE must be clearly depicted as background/environmental details — do NOT make them the main subject, do NOT label them with any text):\n${hotspotObjects.map((o, i) => `${i + 1}. ${o}`).join("\n")}`
+    : "";
+
+  return `\nChildren's storybook illustration.\n\nStyle:\n${styleGuide.art_style}, ${styleGuide.color_palette}, ${styleGuide.lighting}\n\nCharacters:\n${charDesc.length ? charDesc.join(", ") : "(main characters)"}\n\nScene:\n${v.setting || scene.image_prompt || scene.narration || "(describe the main event)"}${v.action ? ", " + v.action : ""}${educationalElements}\n\nMood:\n${v.mood || ""}\n\nTime:\n${v.time_of_day || ""}\n\nComposition:\nFull bleed illustration. The scene fills the entire image edge to edge with no borders, no frames, no white margins, no vignette, no painted border, no canvas edges showing. Centered subject, cinematic framing.\n\nAbsolutely no text, letters, words, labels, captions, signs, symbols, numbers, or writing of any kind anywhere in the image. No watermark, no border, no frame, no white edges.\n`;
 }
 
 /**
@@ -44,7 +49,6 @@ export function generateImagePromptsForStory(
 
 export interface Hotspot {
   object: string;
-  bbox: [number, number, number, number];
 }
 
 export interface PageVisual {

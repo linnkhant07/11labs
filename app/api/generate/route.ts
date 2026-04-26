@@ -14,7 +14,7 @@ function rawPageToPage(raw: RawPage): Page {
     image_prompt: raw.image_prompt,
     image_url: "",
     audio_url: "",
-    hotspots: [],
+    hotspots: (raw.hotspots ?? []).map((h) => ({ object: h.object })),
     visual: raw.visual,
     choice: raw.choice
       ? {

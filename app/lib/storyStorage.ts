@@ -19,9 +19,7 @@ async function uploadImageToCloudinary(
 ): Promise<string> {
   const result = await cloudinary.uploader.upload(base64DataUrl, {
     public_id: publicId,
-    overwrite: true,
     resource_type: "image",
-    // Serve at a consistent quality/format for fast delivery
     transformation: [{ quality: "auto", fetch_format: "auto" }],
   });
   return result.secure_url;
@@ -29,13 +27,16 @@ async function uploadImageToCloudinary(
 
 export async function saveStoryToDisk(story: Story, allPages: Page[]): Promise<void> {
   const slug = topicToSlug(story.topic);
+  // Unique folder per generation — prevents CDN/browser cache collisions when
+  // the same topic is regenerated and the public_id would otherwise be identical
+  const version = Date.now();
 
   // Upload images to Cloudinary in parallel and rewrite image_url
   await Promise.all(
     allPages
       .filter((p) => p.image_url.startsWith("data:"))
       .map(async (page) => {
-        const publicId = `educate/stories/${slug}/${page.page_id}`;
+        const publicId = `educate/stories/${slug}/${version}/${page.page_id}`;
         page.image_url = await uploadImageToCloudinary(page.image_url, publicId);
       })
   );
