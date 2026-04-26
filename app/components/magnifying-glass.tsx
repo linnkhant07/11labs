@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 interface MagnifyingGlassProps {
   imageUrl: string;
@@ -143,6 +144,16 @@ export function MagnifyingGlass({
   // Current display position of the magnifying glass
   const displayPos = dragging && dragPos ? dragPos : position;
 
+  // Convert a percentage-based position to fixed screen coordinates
+  const toFixed = (pct: DropPoint) => {
+    if (!containerRef.current) return { x: 0, y: 0 };
+    const r = containerRef.current.getBoundingClientRect();
+    return {
+      x: r.left + (pct.x / 100) * r.width,
+      y: r.top + (pct.y / 100) * r.height,
+    };
+  };
+
   return (
     <div
       ref={containerRef}
@@ -185,65 +196,55 @@ export function MagnifyingGlass({
         </div>
       </div>
 
-      {/* "What's this?" bubble at drop point */}
-      {position && bubble === "ask" && (
+      {/* "What's this?" bubble */}
+      {position && bubble === "ask" && createPortal(
         <div
-          className="absolute z-30"
-          style={{
-            left: `${position.x}%`,
-            top: `${Math.max(position.y - 12, 2)}%`,
-            transform: "translateX(-50%)",
-          }}
+          className="fixed z-[9999] -translate-x-1/2 -translate-y-full"
+          style={{ left: toFixed(position).x, top: toFixed(position).y - 8 }}
         >
           <button
             onClick={handleExplain}
-            className="rounded-xl bg-white shadow-lg border-2 border-[#f09237] px-4 py-2 text-sm font-semibold text-[#f09237] hover:bg-[#fef5ea] transition-all whitespace-nowrap"
+            className="rounded-xl bg-white shadow-lg border-2 border-[#f09237] px-4 py-2 font-grandstander text-[13px] font-semibold text-[#f09237] hover:bg-[#fef5ea] transition-all whitespace-nowrap"
           >
             {"🔍"} What&apos;s this?
           </button>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Thinking bubble */}
-      {position && bubble === "thinking" && (
+      {position && bubble === "thinking" && createPortal(
         <div
-          className="absolute z-30"
-          style={{
-            left: `${position.x}%`,
-            top: `${Math.max(position.y - 12, 2)}%`,
-            transform: "translateX(-50%)",
-          }}
+          className="fixed z-[9999] -translate-x-1/2 -translate-y-full"
+          style={{ left: toFixed(position).x, top: toFixed(position).y - 8 }}
         >
-          <div className="rounded-xl bg-white shadow-lg border-2 border-[#fee8d3] px-4 py-2 text-sm text-[#f09237] flex items-center gap-2">
+          <div className="rounded-xl bg-white shadow-lg border-2 border-[#fee8d3] px-4 py-2 font-grandstander text-[13px] text-[#f09237] flex items-center gap-2">
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#fee8d3] border-t-[#f09237]" />
             Thinking...
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Result bubble */}
-      {position && bubble === "result" && (
-        <div
-          className="absolute z-30 w-72"
-          style={{
-            left: `clamp(10%, ${position.x}%, 70%)`,
-            top: `${Math.max(position.y - 15, 2)}%`,
-          }}
-          onClick={handleDismiss}
-        >
-          <div className="rounded-xl bg-white shadow-lg border-2 border-[#fee8d3] p-3 cursor-pointer hover:bg-[#fef5ea] transition-all">
-            <p className="text-sm text-gray-700 leading-relaxed">{explanation.replace(/\*{1,3}(.*?)\*{1,3}/g, "$1")}</p>
-            <p className="text-xs text-gray-400 mt-1">Tap to dismiss</p>
+      {position && bubble === "result" && createPortal(
+        <>
+          <div
+            className="fixed inset-0 z-[9998]"
+            onClick={handleDismiss}
+          />
+          <div
+            className="fixed z-[9999] w-72 -translate-x-1/2 -translate-y-full cursor-pointer"
+            style={{ left: toFixed(position).x, top: toFixed(position).y - 8 }}
+            onClick={handleDismiss}
+          >
+            <div className="rounded-xl bg-white shadow-lg border-2 border-[#fee8d3] p-3 hover:bg-[#fef5ea] transition-all">
+              <p className="text-[13px] leading-relaxed text-[#585858]" style={{ fontFamily: "var(--font-abeezee), sans-serif" }}>{explanation.replace(/\*{1,3}(.*?)\*{1,3}/g, "$1")}</p>
+              <p className="font-grandstander text-[11px] text-[#c4a882] mt-1">Tap to dismiss</p>
+            </div>
           </div>
-        </div>
-      )}
-
-      {/* Dismiss overlay when bubble is showing */}
-      {position && bubble === "result" && (
-        <div
-          className="absolute inset-0 z-20"
-          onClick={handleDismiss}
-        />
+        </>,
+        document.body
       )}
     </div>
   );
