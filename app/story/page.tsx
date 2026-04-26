@@ -52,6 +52,7 @@ export default function StoryPage() {
   const narratorId = searchParams.get("narrator") ?? "mouse";
   const topic = searchParams.get("topic") ?? "tornadoes";
   const isDemo = searchParams.get("demo") === "1";
+  const customVoiceId = searchParams.get("voiceId");
 
   const demoStory: Story | null = isDemo
     ? {
@@ -74,9 +75,9 @@ export default function StoryPage() {
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nudgeCount = useRef(0);
 
-  const narratorLabel = NARRATOR_LABELS[narratorId] ?? NARRATOR_LABELS.mouse;
-  const narratorName = NARRATOR_NAMES[narratorId] ?? NARRATOR_NAMES.mouse;
-  const voiceId = VOICE_IDS[narratorId] ?? VOICE_IDS.mouse;
+  const narratorLabel = narratorId === "custom" ? "🎙️ Your Voice" : (NARRATOR_LABELS[narratorId] ?? NARRATOR_LABELS.mouse);
+  const narratorName = narratorId === "custom" ? "Your narrator" : (NARRATOR_NAMES[narratorId] ?? NARRATOR_NAMES.mouse);
+  const voiceId = customVoiceId ?? VOICE_IDS[narratorId] ?? VOICE_IDS.mouse;
 
   // --- Story generation ---
   useEffect(() => {
@@ -141,7 +142,7 @@ export default function StoryPage() {
       const res = await fetch("/api/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: page.narration, narrator: narratorId }),
+        body: JSON.stringify({ text: page.narration, narrator: narratorId, voiceId }),
       });
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -159,7 +160,7 @@ export default function StoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [stopAudio, narratorId]);
+  }, [stopAudio, narratorId, voiceId]);
 
   function handleSpeak() {
     if (playing) { stopAudio(); return; }
@@ -200,7 +201,7 @@ export default function StoryPage() {
       fetch("/api/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: prompt, narrator: narratorId }),
+        body: JSON.stringify({ text: prompt, narrator: narratorId, voiceId }),
       })
         .then((res) => res.blob())
         .then((blob) => {

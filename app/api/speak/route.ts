@@ -12,12 +12,14 @@ const VOICE_MAP: Record<string, string | undefined> = {
 };
 
 export async function POST(req: NextRequest) {
-  const { text, narrator } = (await req.json()) as {
+  const { text, narrator, voiceId: customVoiceId } = (await req.json()) as {
     text: string;
     narrator?: string;
+    voiceId?: string;
   };
 
   const voiceId =
+    customVoiceId ||
     (narrator && VOICE_MAP[narrator]) ||
     process.env.ELEVENLABS_MOUSE_VOICE_ID!;
 
