@@ -1,8 +1,8 @@
 "use client";
 
 import Image from "next/image";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
 
 type QuizOption = { id: string; label: string };
 
@@ -38,7 +38,11 @@ const OPTIONS: QuizOption[] = [
 
 const TOTAL_PAGES = 6;
 
-export default function Quiz() {
+export default function QuizWrapper() {
+  return <Suspense><Quiz /></Suspense>;
+}
+
+function Quiz() {
   const router = useRouter();
   const params = useSearchParams();
   const topic = params.get("topic") ?? "The Moon Phases";

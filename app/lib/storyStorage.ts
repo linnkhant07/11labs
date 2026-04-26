@@ -52,8 +52,10 @@ export async function saveStoryToDisk(story: Story, allPages: Page[]): Promise<v
     ]),
   ]);
 
-  // Save story JSON locally for demo caching
-  const dir = join(process.cwd(), "public", "stories", slug);
-  await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, "story.json"), JSON.stringify(story, null, 2));
+  // Save story JSON locally for demo caching (skip on Vercel — read-only filesystem)
+  if (!process.env.VERCEL) {
+    const dir = join(process.cwd(), "public", "stories", slug);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "story.json"), JSON.stringify(story, null, 2));
+  }
 }

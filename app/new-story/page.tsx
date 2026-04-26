@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type Category = {
@@ -14,7 +15,11 @@ const CATEGORIES: Category[] = [
   { id: "history", name: "History", emoji: "\ud83c\udfdb\ufe0f" },
 ];
 
-export default function NewStory() {
+export default function NewStoryWrapper() {
+  return <Suspense><NewStory /></Suspense>;
+}
+
+function NewStory() {
   const router = useRouter();
   const params = useSearchParams();
   const narrator = params.get("narrator") ?? "mouse";

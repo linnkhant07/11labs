@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState, useRef, useCallback, useMemo, useEffect } from "react";
+import { Suspense, useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { getReadingOrder, TORNADO_STORY, PYRAMIDS_STORY, type Story, type Page } from "../lib/stories";
 import { NARRATORS, isNarratorId, getVoiceId, type NarratorId, type NarratorInfo } from "../lib/narrators";
@@ -38,7 +38,19 @@ function clearPageAudio(pages: Page[]) {
   }
 }
 
-export default function StoryPage() {
+export default function StoryPageWrapper() {
+  return (
+    <Suspense fallback={
+      <main className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#fcebdc] to-white px-6">
+        <div className="mx-auto inline-block h-16 w-16 animate-spin rounded-full border-4 border-[#f29337]/20 border-t-[#f29337]" />
+      </main>
+    }>
+      <StoryPage />
+    </Suspense>
+  );
+}
+
+function StoryPage() {
   const searchParams = useSearchParams();
   const { narratorId: ctxNarratorId, customVoiceId, setNarrator } = useNarrator();
   const urlNarrator = searchParams.get("narrator");
