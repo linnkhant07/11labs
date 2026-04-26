@@ -6,7 +6,7 @@ interface MagnifyingGlassProps {
   imageUrl: string;
   topic: string;
   narration: string;
-  narrator: string;
+  voiceId: string;
 }
 
 interface DropPoint {
@@ -18,7 +18,7 @@ export function MagnifyingGlass({
   imageUrl,
   topic,
   narration,
-  narrator,
+  voiceId,
 }: MagnifyingGlassProps) {
   const [position, setPosition] = useState<DropPoint | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -99,7 +99,7 @@ export function MagnifyingGlass({
       const audioRes = await fetch("/api/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: data.explanation, narrator }),
+        body: JSON.stringify({ text: data.explanation, voice_id: voiceId }),
       });
       const blob = await audioRes.blob();
       const url = URL.createObjectURL(blob);
@@ -114,7 +114,7 @@ export function MagnifyingGlass({
       setExplanation("Oops! I couldn't figure that out. Try again!");
       setBubble("result");
     }
-  }, [position, imageUrl, topic, narration, narrator]);
+  }, [position, imageUrl, topic, narration, voiceId]);
 
   const handleDismiss = useCallback(() => {
     setPosition(null);

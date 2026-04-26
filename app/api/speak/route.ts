@@ -1,27 +1,24 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 
 const client = new ElevenLabsClient({
   apiKey: process.env.ELEVENLABS_API_KEY,
 });
 
-const VOICE_MAP: Record<string, string | undefined> = {
-  mouse: process.env.ELEVENLABS_MOUSE_VOICE_ID,
-  rabbit: process.env.ELEVENLABS_RABBIT_VOICE_ID,
-  owl: process.env.ELEVENLABS_OWL_VOICE_ID,
-};
-
 export async function POST(req: NextRequest) {
-  const { text, narrator } = (await req.json()) as {
-    text: string;
-    narrator?: string;
+  const { text, voice_id } = (await req.json()) as {
+    text?: string;
+    voice_id?: string;
   };
 
-  const voiceId =
-    (narrator && VOICE_MAP[narrator]) ||
-    process.env.ELEVENLABS_MOUSE_VOICE_ID!;
+  if (!text || !voice_id) {
+    return NextResponse.json(
+      { error: "text and voice_id are required" },
+      { status: 400 }
+    );
+  }
 
-  const audioStream = await client.textToSpeech.stream(voiceId, {
+  const audioStream = await client.textToSpeech.stream(voice_id, {
     text,
     modelId: "eleven_flash_v2_5",
     outputFormat: "mp3_44100_128",

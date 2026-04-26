@@ -9,12 +9,6 @@ const elevenlabs = new ElevenLabsClient({
   apiKey: process.env.ELEVENLABS_API_KEY,
 });
 
-const VOICE_MAP: Record<string, string | undefined> = {
-  mouse: process.env.ELEVENLABS_MOUSE_VOICE_ID,
-  rabbit: process.env.ELEVENLABS_RABBIT_VOICE_ID,
-  owl: process.env.ELEVENLABS_OWL_VOICE_ID,
-};
-
 const STORY_PROMPT = `You are an educational storyteller for children ages 6-12, especially those with ADHD. Generate an engaging, educational storybook about the given topic.
 
 RULES:
@@ -108,12 +102,20 @@ function collectAllPages(pages: Page[]): Page[] {
 }
 
 export async function POST(req: NextRequest) {
-  const { topic, narrator } = (await req.json()) as {
+  const { topic, narrator, voice_id } = (await req.json()) as {
     topic: string;
-    narrator: string;
+    narrator?: string;
+    voice_id?: string;
   };
 
-  const voiceId = VOICE_MAP[narrator] || process.env.ELEVENLABS_MOUSE_VOICE_ID!;
+  if (!topic || !voice_id) {
+    return NextResponse.json(
+      { error: "topic and voice_id are required" },
+      { status: 400 }
+    );
+  }
+
+  const voiceId = voice_id;
 
   // 1. Generate story with Gemini
   const response = await genai.models.generateContent({
@@ -190,7 +192,7 @@ export async function POST(req: NextRequest) {
     topic: storyData.topic ?? topic,
     narrator: {
       type: "animal" as const,
-      character: narrator,
+      character: narrator ?? "",
       voice_id: voiceId,
     },
     pages,

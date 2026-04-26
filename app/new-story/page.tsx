@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
+import { NewStoryChat } from "../components/new-story-chat";
 
 type Category = {
   id: string;
@@ -92,6 +93,8 @@ export default function NewStory() {
           ))}
         </div>
       </div>
+
+      <NewStoryChat />
     </main>
   );
 }

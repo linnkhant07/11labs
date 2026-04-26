@@ -3,21 +3,24 @@
 import { useConversation } from "@elevenlabs/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useNarrator } from "./narrator-context";
+import { isNarratorId } from "../lib/narrators";
 
 type NarratorId = "record" | "fox" | "sloth" | "grandma";
 
 interface LandingChatProps {
-  selected: NarratorId;
+  selected: NarratorId | null;
   setSelected: (id: NarratorId) => void;
 }
 
 export function LandingChat({ selected, setSelected }: LandingChatProps) {
+  const { setNarrator } = useNarrator();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const isStartingRef = useRef(false);
 
-  const selectedRef = useRef<NarratorId>(selected);
+  const selectedRef = useRef<NarratorId | null>(selected);
   useEffect(() => {
     selectedRef.current = selected;
   }, [selected]);
@@ -27,6 +30,12 @@ export function LandingChat({ selected, setSelected }: LandingChatProps) {
       console.error("[LandingChat] Error:", err);
       setError("Something went wrong. Try refreshing.");
     },
+    onAgentToolRequest: (event) => {
+      console.log("[LandingChat] onAgentToolRequest:", event);
+    },
+    onAgentToolResponse: (event) => {
+      console.log("[LandingChat] onAgentToolResponse:", event);
+    },
   });
 
   const conversationRef = useRef(conversation);
@@ -34,6 +43,200 @@ export function LandingChat({ selected, setSelected }: LandingChatProps) {
 
   const isConnected = conversation.status === "connected";
   const isConnecting = conversation.status === "connecting";
+
+  const selectNarratorTool = useCallback(
+    (params: Record<string, unknown>) => {
+      const raw = params.narrator ?? params.character ?? params.name ?? params.value;
+      const input = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+      const aliasToId: Record<string, NarratorId> = {
+        fox: "fox",
+        "finn the fox": "fox",
+        sloth: "sloth",
+        "sally the sloth": "sloth",
+        grandma: "grandma",
+        record: "record",
+        "record a voice": "record",
+      };
+      const resolved = aliasToId[input];
+
+      console.log("[LandingChat][tool] select_character called with:", {
+        params,
+        resolved,
+      });
+
+      if (resolved) {
+        setSelected(resolved);
+        if (isNarratorId(resolved)) setNarrator(resolved);
+        console.log("[LandingChat][tool] select_character success:", { resolved });
+        return `Selected ${resolved}`;
+      }
+
+      console.warn("[LandingChat][tool] select_character unknown narrator:", { params });
+      return "Unknown narrator. Please choose fox, sloth, grandma, or record.";
+    },
+    [setNarrator, setSelected]
+  );
+
+  const startStoryTool = useCallback(
+    ({ topic }: { topic: string }) => {
+      console.log("[LandingChat][tool] start_story called with:", {
+        topic,
+        selectedNarrator: selectedRef.current,
+      });
+      if (!selectedRef.current) {
+        console.warn("[LandingChat][tool] start_story blocked: no narrator selected");
+        return "No narrator selected. Ask the user to choose a narrator first.";
+      }
+      const params = new URLSearchParams({
+        topic,
+        narrator: selectedRef.current,
+        demo: "1",
+      });
+      console.log("[LandingChat][tool] start_story navigating:", {
+        path: `/story?${params.toString()}`,
+      });
+      router.push(`/story?${params.toString()}`);
+      return `Starting ${topic}`;
+    },
+    [router]
+  );
+
+  const createNewStoryTool = useCallback(() => {
+    console.log("[LandingChat][tool] create_new_story called with:", {
+      selectedNarrator: selectedRef.current,
+    });
+    if (!selectedRef.current) {
+      console.warn("[LandingChat][tool] create_new_story blocked: no narrator selected");
+      return "No narrator selected. Ask the user to choose a narrator first.";
+    }
+    console.log("[LandingChat][tool] create_new_story navigating:", {
+      path: `/new-story?narrator=${selectedRef.current}`,
+    });
+    router.push(`/new-story?narrator=${selectedRef.current}`);
+    return "Opening new story flow";
+  }, [router]);
+
+  const exploreLibraryTool = useCallback(
+    (params: Record<string, unknown>) => {
+      const rawTopic = params.topic ?? params.title ?? params.story ?? params.query;
+      const topic =
+        typeof rawTopic === "string" && rawTopic.trim()
+          ? rawTopic.trim()
+          : "What are Tornadoes?";
+
+      console.log("[LandingChat][tool] explore_library called with:", {
+        params,
+        resolvedTopic: topic,
+        selectedNarrator: selectedRef.current,
+      });
+
+      if (!selectedRef.current) {
+        console.warn("[LandingChat][tool] explore_library blocked: no narrator selected");
+        return "No narrator selected. Ask the user to choose a narrator first.";
+      }
+
+      const routeTopic =
+        topic.toLowerCase() === "what are tornadoes?" ? "What are Tornadoes?" : topic;
+      const query = new URLSearchParams({
+        topic: routeTopic,
+        narrator: selectedRef.current,
+        demo: "1",
+      });
+
+      console.log("[LandingChat][tool] explore_library navigating:", {
+        path: `/story?${query.toString()}`,
+      });
+      router.push(`/story?${query.toString()}`);
+      return `Opening library story: ${routeTopic}`;
+    },
+    [router]
+  );
+
+  const selectModeTool = useCallback(
+    (params: Record<string, unknown>) => {
+      const raw = params.mode ?? params.choice ?? params.intent ?? params.value;
+      const input = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+
+      console.log("[LandingChat][tool] select_mode called with:", { params, input });
+
+      if (
+        input === "create a new story" ||
+        input === "create_new_story" ||
+        input === "create" ||
+        input === "new story"
+      ) {
+        return createNewStoryTool();
+      }
+
+      if (
+        input === "what are tornadoes?" ||
+        input === "what are tornadoes" ||
+        input === "explore_library" ||
+        input === "explore"
+      ) {
+        return exploreLibraryTool({ topic: "What are Tornadoes?" });
+      }
+
+      console.warn("[LandingChat][tool] select_mode unknown mode:", { params });
+      return "Unknown mode. Please choose Create a New Story or What are Tornadoes?.";
+    },
+    [createNewStoryTool, exploreLibraryTool]
+  );
+
+  const selectSubjectTool = useCallback((params: Record<string, unknown>) => {
+    const raw =
+      params.subject ??
+      params.choice ??
+      params.topic ??
+      params.query ??
+      params.value ??
+      params.transcript;
+    const input = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+
+    const scienceHints = [
+      "science",
+      "plants",
+      "animals",
+      "space",
+      "weather",
+      "tornadoes",
+      "robots",
+      "dinosaurs",
+      "experiments",
+      "nature",
+      "how the world works",
+      "plant one",
+      "left card",
+    ];
+    const historyHints = [
+      "history",
+      "the past",
+      "ancient times",
+      "kings",
+      "queens",
+      "castles",
+      "presidents",
+      "civilizations",
+      "egypt",
+      "rome",
+      "building one",
+      "right card",
+    ];
+
+    const containsAny = (hints: string[]) => hints.some((hint) => input.includes(hint));
+    const resolved = containsAny(scienceHints)
+      ? "Science"
+      : containsAny(historyHints)
+        ? "History"
+        : null;
+
+    console.log("[LandingChat][tool] select_subject called with:", { params, input, resolved });
+
+    if (resolved) return resolved;
+
+    console.warn("[LandingChat][tool] select_subject unknown subject:", { params });
+    return "Science";
+  }, []);
 
   const startSession = useCallback(async () => {
     if (conversationRef.current.status === "connected" || isStartingRef.current) return;
@@ -50,28 +253,17 @@ export function LandingChat({ selected, setSelected }: LandingChatProps) {
 
       await conversationRef.current.startSession({
         signedUrl: data.signedUrl,
+        // Pass explicit tools at session start as a fallback to avoid timing races.
         clientTools: {
-          selectNarrator: async ({ narrator }: { narrator: string }) => {
-            const valid: NarratorId[] = ["record", "fox", "sloth", "grandma"];
-            if (valid.includes(narrator as NarratorId)) {
-              setSelected(narrator as NarratorId);
-              return `Selected ${narrator}`;
-            }
-            return `Unknown narrator ${narrator}`;
-          },
-          startStory: async ({ topic }: { topic: string }) => {
-            const params = new URLSearchParams({
-              topic,
-              narrator: selectedRef.current,
-              demo: "1",
-            });
-            router.push(`/story?${params.toString()}`);
-            return `Starting ${topic}`;
-          },
-          createNewStory: async () => {
-            router.push(`/new-story?narrator=${selectedRef.current}`);
-            return "Opening new story flow";
-          },
+          selectNarrator: selectNarratorTool,
+          select_character: selectNarratorTool,
+          startStory: startStoryTool,
+          start_story: startStoryTool,
+          createNewStory: createNewStoryTool,
+          create_new_story: createNewStoryTool,
+          explore_library: exploreLibraryTool,
+          select_mode: selectModeTool,
+          select_subject: selectSubjectTool,
         },
       });
     } catch (err) {
@@ -83,7 +275,14 @@ export function LandingChat({ selected, setSelected }: LandingChatProps) {
       isStartingRef.current = false;
       setIsStarting(false);
     }
-  }, [router, setSelected]);
+  }, [
+    createNewStoryTool,
+    exploreLibraryTool,
+    selectModeTool,
+    selectSubjectTool,
+    selectNarratorTool,
+    startStoryTool,
+  ]);
 
   const endSession = useCallback(async () => {
     if (conversationRef.current.status !== "connected") return;
@@ -95,18 +294,24 @@ export function LandingChat({ selected, setSelected }: LandingChatProps) {
   }, []);
 
   useEffect(() => {
+    // Push-to-talk: hold Command to keep the mic open, release to disconnect.
     function onKeyDown(e: KeyboardEvent) {
-      // Command key starts the mic session, Option key ends it.
-      if (e.metaKey) {
-        void startSession();
-      } else if (e.altKey) {
-        void endSession();
-      }
+      if (e.key === "Meta" && !e.repeat) void startSession();
+    }
+    function onKeyUp(e: KeyboardEvent) {
+      if (e.key === "Meta") void endSession();
+    }
+    function onBlur() {
+      void endSession();
     }
 
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
     };
   }, [startSession, endSession]);
 
@@ -166,7 +371,7 @@ export function LandingChat({ selected, setSelected }: LandingChatProps) {
       )}
       {!isConnected && !isConnecting && (
         <div className="rounded-lg border border-gray-100 bg-white/80 px-3 py-1.5 text-xs text-gray-500 shadow backdrop-blur">
-          Press Command to open mic, Option to close
+          Hold Command to talk
         </div>
       )}
 
