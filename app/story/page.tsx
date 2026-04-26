@@ -50,7 +50,7 @@ export default function StoryPage() {
       setGenerating(true);
       setError(null);
       try {
-        /*// Try cached story first — avoids regenerating pre-built demo stories
+        // Try cached story first — avoids regenerating pre-built demo stories
         const slug = topic.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
         const cached = await fetch(`/stories/${slug}/story.json`).catch(() => null);
         if (cached?.ok) {
@@ -63,7 +63,7 @@ export default function StoryPage() {
           }
           if (!cancelled) setStory(data);
           return;
-        }*/
+        }
 
         // Fall back to live generation
         const res = await fetch("/api/generate", {
