@@ -3,7 +3,7 @@ import type { Page, Story } from "../../lib/stories";
 import { buildImagePrompt } from "../../lib/stories";
 import { collectAllPages, collectAllChoices } from "../../lib/generateUtils";
 import { generateStoryData, generateImage, type RawPage } from "../../lib/gemini";
-import { generateAudio, resolveVoiceId } from "../../lib/elevenlabs";
+import { generateAudioWithTimestamps, resolveVoiceId } from "../../lib/elevenlabs";
 import { saveStoryToDisk } from "../../lib/storyStorage";
 import { STORY_PROMPT } from "../../lib/prompts";
 
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
           generateImage(buildImagePrompt(p, raw.style_guide, raw.characters), p.page_id)
         )
       ),
-      Promise.all(allPages.map((p) => generateAudio(p.narration, voiceId, p.page_id))),
+      Promise.all(allPages.map((p) => generateAudioWithTimestamps(p.narration, voiceId, p.page_id))),
       Promise.all(
         allChoices.flatMap((c, i) => [
           generateImage(c.option_a.image_prompt, `choice-${i}-a`),
@@ -92,7 +92,8 @@ export async function POST(req: NextRequest) {
     // 3. Assign generated assets back to pages
     allPages.forEach((page, i) => {
       page.image_url = imageUrls[i];
-      page.audio_url = audioUrls[i];
+      page.audio_url = audioUrls[i].audioUrl;
+      page.timestamps = audioUrls[i].timestamps;
     });
 
     allChoices.forEach((choice, i) => {

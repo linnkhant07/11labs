@@ -170,10 +170,10 @@ export function MagnifyingGlass({
               }
         }
       >
-        <div className="flex items-center justify-center h-12 w-12 rounded-full bg-white/90 shadow-lg border-2 border-indigo-300 backdrop-blur">
+        <div className="flex items-center justify-center h-12 w-12 rounded-full bg-[#f09237] shadow-lg shadow-[#f09237]/30 backdrop-blur">
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            className="h-6 w-6 text-indigo-600"
+            className="h-6 w-6 text-white"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -197,7 +197,7 @@ export function MagnifyingGlass({
         >
           <button
             onClick={handleExplain}
-            className="rounded-xl bg-white shadow-lg border-2 border-indigo-300 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 transition-all whitespace-nowrap"
+            className="rounded-xl bg-white shadow-lg border-2 border-[#f09237] px-4 py-2 text-sm font-semibold text-[#f09237] hover:bg-[#fef5ea] transition-all whitespace-nowrap"
           >
             {"🔍"} What&apos;s this?
           </button>
@@ -214,8 +214,8 @@ export function MagnifyingGlass({
             transform: "translateX(-50%)",
           }}
         >
-          <div className="rounded-xl bg-white shadow-lg border-2 border-indigo-200 px-4 py-2 text-sm text-indigo-500 flex items-center gap-2">
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-300 border-t-indigo-600" />
+          <div className="rounded-xl bg-white shadow-lg border-2 border-[#fee8d3] px-4 py-2 text-sm text-[#f09237] flex items-center gap-2">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#fee8d3] border-t-[#f09237]" />
             Thinking...
           </div>
         </div>
@@ -231,7 +231,7 @@ export function MagnifyingGlass({
           }}
           onClick={handleDismiss}
         >
-          <div className="rounded-xl bg-white shadow-lg border-2 border-indigo-200 p-3 cursor-pointer hover:bg-gray-50 transition-all">
+          <div className="rounded-xl bg-white shadow-lg border-2 border-[#fee8d3] p-3 cursor-pointer hover:bg-[#fef5ea] transition-all">
             <p className="text-sm text-gray-700 leading-relaxed">{explanation.replace(/\*{1,3}(.*?)\*{1,3}/g, "$1")}</p>
             <p className="text-xs text-gray-400 mt-1">Tap to dismiss</p>
           </div>

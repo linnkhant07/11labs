@@ -1,10 +1,13 @@
 "use client";
 
+import Image from "next/image";
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { getReadingOrder, TORNADO_STORY, PYRAMIDS_STORY, type Story, type Page } from "../lib/stories";
+import { NARRATORS, isNarratorId, getVoiceId, type NarratorId, type NarratorInfo } from "../lib/narrators";
 import { topicToSlug } from "../lib/generateUtils";
 import { NarratorChat } from "../components/narrator-chat";
+import { useNarrator } from "../components/narrator-context";
 import { MagnifyingGlass } from "../components/magnifying-glass";
 
 const PLACEHOLDER_GRADIENTS = [
@@ -16,33 +19,6 @@ const PLACEHOLDER_GRADIENTS = [
   "from-rose-300 to-pink-500",
 ];
 
-const VOICE_IDS: Record<string, string> = {
-  mouse: "dfZGXKiIzjizWtJ0NgPy",
-  rabbit: "vGQNBgLaiM3EdZtxIiuY",
-  owl: "XsmrVB66q3D4TaXVaWNF",
-};
-
-const NARRATOR_NAMES: Record<string, string> = {
-  mouse: "Milo the Mouse",
-  rabbit: "Rosie the Rabbit",
-  owl: "Oliver the Owl",
-};
-
-const NARRATOR_LABELS: Record<string, string> = {
-  mouse: "\ud83d\udc2d Milo",
-  rabbit: "\ud83d\udc30 Rosie",
-  owl: "\ud83e\udd89 Oliver",
-};
-
-const INACTIVITY_TIMEOUT = 30_000;
-
-const RE_ENGAGEMENT_PROMPTS = [
-  "Hey! Are you still with me? Want me to read that part again?",
-  "Still there? I was just thinking about something cool related to our story!",
-  "Hey friend! Did that last part make you curious about anything?",
-  "I'm still here! Want to keep going, or do you have a question?",
-  "Psst! Don't forget, you can ask me anything about the story!",
-];
 
 function getGradient(index: number) {
   return PLACEHOLDER_GRADIENTS[index % PLACEHOLDER_GRADIENTS.length];
@@ -64,15 +40,25 @@ function clearPageAudio(pages: Page[]) {
 
 export default function StoryPage() {
   const searchParams = useSearchParams();
-  const narratorId = searchParams.get("narrator") ?? "mouse";
+  const { narratorId: ctxNarratorId, customVoiceId, setNarrator } = useNarrator();
+  const urlNarrator = searchParams.get("narrator");
+  const narratorId: NarratorId = isNarratorId(urlNarrator ?? "")
+    ? (urlNarrator as NarratorId)
+    : ctxNarratorId;
+
+  useEffect(() => {
+    if (urlNarrator && isNarratorId(urlNarrator) && urlNarrator !== ctxNarratorId) {
+      setNarrator(urlNarrator);
+    }
+  }, [urlNarrator, ctxNarratorId, setNarrator]);
+
   const topic = searchParams.get("topic") ?? "tornadoes";
   const isDemo = searchParams.get("demo") === "1";
-  const customVoiceId = searchParams.get("voiceId");
 
   const demoStory: Story | null = isDemo
     ? {
         ...(topic.toLowerCase().includes("pyramid") ? PYRAMIDS_STORY : TORNADO_STORY),
-        narrator: { type: "animal", character: narratorId as "mouse" | "rabbit" | "owl", voice_id: "" },
+        narrator: { type: "animal", character: narratorId, voice_id: "" },
       }
     : null;
 
@@ -84,15 +70,13 @@ export default function StoryPage() {
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const [hasFinishedReading, setHasFinishedReading] = useState(false);
-  const [nudgeText, setNudgeText] = useState<string | null>(null);
   const [chatActive, setChatActive] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const nudgeCount = useRef(0);
+  const [activeWordIndex, setActiveWordIndex] = useState(-1);
+  const rafRef = useRef<number | null>(null);
 
-  const narratorLabel = narratorId === "custom" ? "🎙️ Your Voice" : (NARRATOR_LABELS[narratorId] ?? NARRATOR_LABELS.mouse);
-  const narratorName = narratorId === "custom" ? "Your narrator" : (NARRATOR_NAMES[narratorId] ?? NARRATOR_NAMES.mouse);
-  const voiceId = customVoiceId ?? VOICE_IDS[narratorId] ?? VOICE_IDS.mouse;
+  const narrator = NARRATORS[narratorId];
+  const voiceId = getVoiceId(narratorId, customVoiceId);
 
   // --- Story generation (try cache first, then generate) ---
   useEffect(() => {
@@ -101,24 +85,23 @@ export default function StoryPage() {
     async function generate() {
       setGenerating(true);
       setError(null);
+      const minDelay = new Promise<void>((resolve) => setTimeout(resolve, 2500));
       try {
-        // Check for cached story first
         const slug = topicToSlug(topic);
         const cached = await fetch(`/stories/${slug}/story.json`, { signal: controller.signal });
         if (cached.ok) {
           const data: Story = await cached.json();
-          // If cached narrator doesn't match user's pick, clear audio so it regenerates on-demand with the right voice
           const cachedVoice = data.narrator?.voice_id;
           if (cachedVoice && cachedVoice !== voiceId) {
-            console.log(`[story] Cached story voice mismatch (cached: ${data.narrator.character}, selected: ${narratorId}) — audio will regenerate on-demand`);
+            console.log(`[story] Cached story voice mismatch — audio will regenerate on-demand`);
             clearPageAudio(data.pages);
           }
           console.log(`[story] Loaded cached story for "${topic}"`);
-          setStory(data);
+          await minDelay;
+          if (!controller.signal.aborted) setStory(data);
           return;
         }
 
-        // No cache — generate from scratch
         console.log(`[story] No cache for "${topic}", generating...`);
         const res = await fetch("/api/generate", {
           method: "POST",
@@ -138,7 +121,7 @@ export default function StoryPage() {
     }
     generate();
     return () => { controller.abort(); };
-  }, [topic, narratorId]);
+  }, [topic, narratorId, voiceId, isDemo]);
 
   const pages = useMemo(
     () => (story ? getReadingOrder(story.pages, branchChoices) : []),
@@ -154,7 +137,23 @@ export default function StoryPage() {
       audioRef.current.pause();
       audioRef.current = null;
     }
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    setActiveWordIndex(-1);
     setPlaying(false);
+  }, []);
+
+  const startWordTracking = useCallback((audio: HTMLAudioElement, timestamps: Page["timestamps"]) => {
+    if (!timestamps?.length) return;
+    const tick = () => {
+      const t = audio.currentTime;
+      let idx = -1;
+      for (let i = 0; i < timestamps.length; i++) {
+        if (t >= timestamps[i].start && t <= timestamps[i].end + 0.05) { idx = i; break; }
+      }
+      setActiveWordIndex(idx);
+      if (!audio.paused) rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
   }, []);
 
   const playNarration = useCallback(async (page: Page) => {
@@ -165,12 +164,12 @@ export default function StoryPage() {
       setPlaying(true);
       const audio = new Audio(page.audio_url);
       audioRef.current = audio;
-      audio.onended = () => { setPlaying(false); setHasFinishedReading(true); audioRef.current = null; };
+      audio.onended = () => { setPlaying(false); setHasFinishedReading(true); setActiveWordIndex(-1); audioRef.current = null; if (rafRef.current) cancelAnimationFrame(rafRef.current); };
       await audio.play();
+      startWordTracking(audio, page.timestamps);
       return;
     }
 
-    // Fallback: on-demand TTS
     setLoading(true);
     setPlaying(true);
     try {
@@ -206,67 +205,15 @@ export default function StoryPage() {
   useEffect(() => {
     if (!currentPage || generating) return;
     setHasFinishedReading(false);
-
-    // Delay slightly to let React strict mode cleanup run first
-    const timeout = setTimeout(() => {
-      playNarration(currentPage);
-    }, 50);
-
-    return () => {
-      clearTimeout(timeout);
-      stopAudio();
-    };
+    const timeout = setTimeout(() => { playNarration(currentPage); }, 50);
+    return () => { clearTimeout(timeout); stopAudio(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage?.page_id, generating]);
 
-  // --- Stop narration when chat starts ---
   const handleChatStatusChange = useCallback((active: boolean) => {
     setChatActive(active);
     if (active) stopAudio();
   }, [stopAudio]);
-
-  // --- Inactivity re-engagement ---
-  const resetInactivityTimer = useCallback(() => {
-    setNudgeText(null);
-    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
-    inactivityTimer.current = setTimeout(() => {
-      const prompt = RE_ENGAGEMENT_PROMPTS[nudgeCount.current % RE_ENGAGEMENT_PROMPTS.length];
-      nudgeCount.current += 1;
-      setNudgeText(prompt);
-      fetch("/api/speak", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: prompt, narrator: narratorId, voiceId }),
-      })
-        .then((res) => res.blob())
-        .then((blob) => {
-          const url = URL.createObjectURL(blob);
-          const audio = new Audio(url);
-          audio.onended = () => URL.revokeObjectURL(url);
-          audio.play();
-        })
-        .catch(() => {});
-    }, INACTIVITY_TIMEOUT);
-  }, [narratorId]);
-
-  useEffect(() => {
-    if (generating || !story) return;
-    resetInactivityTimer();
-    return () => { if (inactivityTimer.current) clearTimeout(inactivityTimer.current); };
-  }, [pageIndex, branchChoices, playing, generating, story, resetInactivityTimer]);
-
-  useEffect(() => {
-    if (generating || !story) return;
-    const reset = () => resetInactivityTimer();
-    window.addEventListener("click", reset);
-    window.addEventListener("keydown", reset);
-    window.addEventListener("touchstart", reset);
-    return () => {
-      window.removeEventListener("click", reset);
-      window.removeEventListener("keydown", reset);
-      window.removeEventListener("touchstart", reset);
-    };
-  }, [generating, story, resetInactivityTimer]);
 
   // --- Navigation ---
   function handleNext() { stopAudio(); setHasFinishedReading(false); setPageIndex((i) => Math.min(i + 1, pages.length - 1)); }
@@ -282,186 +229,292 @@ export default function StoryPage() {
 
   function handleRestart() { stopAudio(); setHasFinishedReading(false); setBranchChoices({}); setPageIndex(0); }
 
-  // --- Render ---
+  // --- Render: generating ---
   if (generating) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-sky-50 to-indigo-50">
+      <main className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#fcebdc] to-white px-6">
         <div className="text-center space-y-4">
-          <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600" />
-          <p className="text-lg font-semibold text-indigo-800">
-            {narratorLabel} is creating your story about {topic}...
-          </p>
-          <p className="text-sm text-indigo-400">Generating story and narration audio</p>
+          <div className="mx-auto inline-block h-10 w-10 animate-spin rounded-full border-4 border-[#f29337]/20 border-t-[#f29337]" />
+          <h2 className="font-chelsea text-[18px] text-black md:text-[22px]">
+            {narrator.short} is creating your story...
+          </h2>
+          <p className="font-grandstander text-[14px] text-[#585858] md:text-[17px]">About: {topic}</p>
         </div>
-      </div>
+      </main>
     );
   }
 
+  // --- Render: error ---
   if (error || !story || !currentPage) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-sky-50 to-indigo-50">
+      <main className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#fcebdc] to-white px-6">
         <div className="text-center space-y-4">
-          <p className="text-lg font-semibold text-red-600">{error ?? "Something went wrong"}</p>
-          <a href="/" className="inline-block rounded-full bg-indigo-500 px-6 py-3 text-sm font-bold text-white hover:bg-indigo-600">
+          <p className="font-grandstander text-[14px] text-red-600 md:text-[17px]">{error ?? "Something went wrong"}</p>
+          <a href="/" className="inline-block rounded-full bg-[#f09237] px-4 py-2.5 font-grandstander text-[13px] font-medium text-white shadow-[2px_4px_0px_0px_#db6c00] transition-transform hover:scale-[1.03] md:text-[15px]">
             Try Again
           </a>
         </div>
-      </div>
+      </main>
     );
   }
 
+  const totalPages = pages.length;
+
   return (
-    <div className="flex min-h-screen flex-col bg-gradient-to-b from-sky-50 to-indigo-50">
-      <header className="flex items-center justify-between px-6 py-4 bg-white/70 backdrop-blur border-b border-indigo-100">
-        <span className="text-sm font-bold text-indigo-900">{story.title}</span>
-        <div className="flex items-center gap-4 text-sm text-indigo-500">
-          <span>Narrated by {narratorLabel}</span>
-          <span className="text-indigo-300">|</span>
-          <span>Page {pageIndex + 1} of {pages.length}{needsChoice ? "+" : ""}</span>
-        </div>
-      </header>
+    <main className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#fcebdc] to-white">
+      {/* Decorative leaves */}
+      <DecorLeaf src="/figma/landing/leaf-3.svg" size={78} rotate={18.88} className="left-[2%] top-[48%] hidden md:block" />
+      <DecorLeaf src="/figma/landing/leaf-1.svg" size={91} rotate={55.56} className="right-[3%] top-[5%] hidden md:block" />
+      <DecorLeaf src="/figma/landing/leaf-2.svg" size={63} rotate={-72.55} className="right-[8%] top-[12%] hidden md:block" />
 
-      <main className="flex flex-1 flex-col items-center justify-center px-6 py-8">
-        <div className="w-full max-w-4xl space-y-6">
-          {/* Illustration */}
-          <div className="relative h-64 md:h-80 w-full rounded-3xl overflow-hidden shadow-inner">
-            {currentPage.image_url ? (
-              <>
-                <img
-                  src={currentPage.image_url}
-                  alt={currentPage.image_prompt}
-                  className="h-full w-full object-cover"
-                />
-                <MagnifyingGlass
-                  imageUrl={currentPage.image_url}
-                  topic={topic}
-                  narration={currentPage.narration}
-                  narrator={narratorId}
-                />
-              </>
-            ) : (
-              <div className={`h-full w-full bg-gradient-to-br ${getGradient(pageIndex)} flex items-center justify-center`}>
-                <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_30%_40%,white_0%,transparent_60%)]" />
-                <p className="text-white/70 text-sm font-medium px-8 text-center italic">
-                  {currentPage.image_prompt}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Narration text */}
-          <div className="rounded-2xl bg-white p-6 md:p-8 shadow-sm border border-indigo-100">
-            <p className="text-lg leading-relaxed text-gray-700">
-              {stripMarkdown(currentPage.narration)}
-            </p>
-          </div>
-
-          {/* Re-engagement nudge */}
-          {nudgeText && (
-            <div
-              className="rounded-2xl bg-amber-50 border-2 border-amber-200 p-4 text-center cursor-pointer transition-all hover:bg-amber-100"
-              onClick={() => setNudgeText(null)}
-            >
-              <p className="text-sm font-medium text-amber-800">
-                {narratorLabel}: &ldquo;{nudgeText}&rdquo;
+      <div className="relative mx-auto flex w-full max-w-[880px] flex-col gap-5 px-6 py-5 md:px-8 md:py-8 md:gap-6">
+        {/* Header */}
+        <header className="flex w-full flex-wrap items-center justify-between gap-6">
+          <div className="flex items-center gap-4 md:gap-8">
+            <NarratorBadge narrator={narrator} />
+            <div className="flex flex-col gap-1 md:gap-2">
+              <h1 className="font-chelsea text-[18px] leading-tight text-black md:text-[22px]">{story.title}</h1>
+              <p className="text-[14px] text-[#585858] md:text-[17px]" style={{ fontFamily: "var(--font-abeezee), sans-serif" }}>
+                Narrator: {narrator.name}
               </p>
-              <p className="text-xs text-amber-500 mt-1">Tap to dismiss</p>
             </div>
-          )}
+          </div>
+          <button
+            onClick={() => { document.querySelector<HTMLButtonElement>("[data-narrator-chat-trigger]")?.click(); }}
+            className={`flex items-center justify-center gap-2 rounded-[48px] px-4 py-2.5 transition-transform hover:scale-[1.03] active:translate-y-[2px] md:gap-2 md:px-5 md:py-3 ${
+              chatActive
+                ? "bg-red-500 shadow-[2px_4px_0px_0px_#b91c1c,2px_2px_20px_rgba(0,0,0,0.1)] active:shadow-[2px_4px_0px_0px_#b91c1c,2px_2px_20px_rgba(0,0,0,0.1)]"
+                : "bg-[#f09237] shadow-[2px_4px_0px_0px_#db6c00,2px_2px_20px_rgba(0,0,0,0.1)] active:shadow-[2px_4px_0px_0px_#db6c00,2px_2px_20px_rgba(0,0,0,0.1)]"
+            }`}
+          >
+            <MicIcon />
+            <span className="font-grandstander text-[14px] font-medium text-[#fef9f3] md:text-[14px]">
+              {chatActive ? `Stop ${narrator.short}` : `Talk to ${narrator.short}`}
+            </span>
+          </button>
+        </header>
 
-          {/* Controls */}
-          <div className="flex items-center justify-between">
-            <button
-              onClick={handlePrev}
-              disabled={pageIndex === 0}
-              className={`rounded-full px-5 py-2.5 text-sm font-semibold transition-all ${
-                pageIndex === 0 ? "text-gray-300 cursor-not-allowed" : "text-indigo-600 hover:bg-indigo-50"
-              }`}
-            >
-              &larr; Back
-            </button>
+        {/* Story card */}
+        <section className="flex w-full flex-col items-center gap-4 rounded-[24px] bg-white p-5 shadow-[2px_2px_5px_rgba(0,0,0,0.1)] md:gap-6 md:px-8 md:py-8">
+          {/* Page indicator + progress */}
+          <div className="flex w-full flex-col items-center gap-3 md:gap-4">
+            <div className="flex items-center justify-center gap-6 md:gap-8">
+              <button onClick={handlePrev} disabled={pageIndex === 0} aria-label="Previous page" className="transition-transform hover:scale-110 disabled:opacity-30">
+                <ArrowLeftSmall />
+              </button>
+              <span className="font-grandstander text-[13px] font-medium text-black md:text-[15px]">Page {pageIndex + 1} of {totalPages}</span>
+              <button onClick={handleNext} disabled={pageIndex === totalPages - 1 || !!needsChoice} aria-label="Next page" className="transition-transform hover:scale-110 disabled:opacity-30">
+                <ArrowRightSmall />
+              </button>
+            </div>
+            <div className="flex w-full max-w-full gap-3">
+              {Array.from({ length: totalPages }).map((_, i) => (
+                <div key={i} className="h-[3px] flex-1 rounded-full transition-colors" style={{ backgroundColor: i <= pageIndex ? "#f09237" : "#eaeaea" }} />
+              ))}
+            </div>
+          </div>
 
-            {playing ? (
-              <button
-                onClick={handleSpeak}
-                className="rounded-full px-8 py-3 text-sm font-bold transition-all shadow-md bg-red-500 text-white hover:bg-red-600"
-              >
-                Stop
-              </button>
-            ) : loading ? (
-              <button
-                disabled
-                className="rounded-full px-8 py-3 text-sm font-bold shadow-md bg-gray-300 text-gray-500 cursor-wait"
-              >
-                Loading...
-              </button>
-            ) : hasFinishedReading ? (
-              <button
-                onClick={handleSpeak}
-                className="rounded-full px-8 py-3 text-sm font-bold transition-all shadow-md bg-gradient-to-r from-indigo-500 to-purple-600 text-white hover:shadow-lg"
-              >
-                {"\ud83d\udd01"} Read Again
-              </button>
-            ) : null}
+          {/* Image */}
+          <div className="relative w-full overflow-hidden rounded-[24px] shadow-[2px_2px_5px_rgba(0,0,0,0.1)]">
+            <div className="relative aspect-[1112/360] w-full">
+              {currentPage.image_url ? (
+                <>
+                  <img src={currentPage.image_url} alt={currentPage.image_prompt} className="absolute inset-0 size-full rounded-[24px] object-cover" />
+                  <MagnifyingGlass imageUrl={currentPage.image_url} topic={topic} narration={currentPage.narration} narrator={narratorId} />
+                </>
+              ) : (
+                <div className={`size-full bg-gradient-to-br ${getGradient(pageIndex)} flex items-center justify-center rounded-[24px]`}>
+                  <p className="px-8 text-center text-sm font-medium italic text-white/70">{currentPage.image_prompt}</p>
+                </div>
+              )}
+            </div>
+          </div>
 
-            {needsChoice ? (
-              <div className="text-sm text-indigo-400 font-medium">Make a choice &darr;</div>
-            ) : isLastPage ? (
-              <button onClick={handleRestart} className="rounded-full px-5 py-2.5 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 transition-all">
-                Restart
-              </button>
+          {/* Narration text with word highlighting */}
+          <p className="w-full text-[14px] leading-[1.65] text-black md:text-[17px] md:leading-[1.8]" style={{ fontFamily: "var(--font-abeezee), sans-serif" }}>
+            {currentPage.timestamps?.length ? (
+              currentPage.timestamps.map((wt, i) => (
+                <span
+                  key={i}
+                  className="transition-colors duration-150"
+                  style={{
+                    backgroundColor: i === activeWordIndex ? "#fee8d3" : "transparent",
+                    borderRadius: i === activeWordIndex ? "4px" : undefined,
+                    padding: i === activeWordIndex ? "1px 2px" : undefined,
+                  }}
+                >
+                  {stripMarkdown(wt.word)}{" "}
+                </span>
+              ))
             ) : (
-              <button onClick={handleNext} className="rounded-full px-5 py-2.5 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 transition-all">
-                Next &rarr;
+              stripMarkdown(currentPage.narration)
+            )}
+          </p>
+
+          {/* Bottom controls */}
+          <div className="relative flex w-full items-center justify-between">
+            <button onClick={handlePrev} disabled={pageIndex === 0} aria-label="Previous page" className="flex size-12 items-center justify-center rounded-full border border-[#eaeaea] bg-[#eaeaea] shadow-[2px_2px_5px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 disabled:opacity-40 md:size-14">
+              <ArrowLeftLarge />
+            </button>
+            <button onClick={handleSpeak} disabled={loading} aria-label={playing ? "Pause" : "Play"} className="flex size-12 items-center justify-center rounded-full bg-[#f09237] shadow-[2px_2px_10px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 disabled:opacity-60 md:size-14">
+              {loading ? (
+                <span className="size-5 animate-spin rounded-full border-2 border-white/40 border-t-white md:size-6" />
+              ) : playing ? (
+                <PauseIcon />
+              ) : (
+                <PlayIcon />
+              )}
+            </button>
+            {isLastPage ? (
+              <a href="/" aria-label="Go home" className="flex size-12 items-center justify-center rounded-full bg-[#f09237] shadow-[2px_2px_10px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 md:size-14">
+                <HomeIcon />
+              </a>
+            ) : (
+              <button onClick={handleNext} disabled={!!needsChoice} aria-label="Next page" className="flex size-12 items-center justify-center rounded-full border border-[#fee8d3] bg-[#fee8d3] shadow-[2px_2px_5px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 disabled:opacity-40 md:size-14">
+                <ArrowRightLarge />
               </button>
             )}
           </div>
 
           {/* Choice UI */}
           {needsChoice && currentPage.choice && (
-            <div className="rounded-2xl bg-indigo-50 border-2 border-indigo-200 p-6 space-y-4">
-              <p className="text-center font-semibold text-indigo-800">{currentPage.choice.question}</p>
-              <div className="grid grid-cols-2 gap-4">
+            <div className="w-full space-y-4 rounded-2xl border-2 border-[#fee8d3] bg-[#fef9f3] p-6">
+              <p className="text-center font-grandstander text-[14px] font-medium text-[#f29337] md:text-[17px]">{currentPage.choice.question}</p>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <button
                   onClick={() => handleChoice("a")}
-                  className="rounded-xl bg-white border-2 border-indigo-200 overflow-hidden text-center font-medium text-indigo-700 hover:border-indigo-500 hover:bg-indigo-50 transition-all hover:shadow-md"
+                  className="overflow-hidden rounded-xl border-2 border-[#cfcfcf] bg-white text-center text-[13px] font-semibold text-black shadow-[2px_3px_0px_0px_#cfcfcf] transition-all hover:scale-[1.02] hover:border-[#f29337] hover:shadow-[2px_3px_0px_0px_#f29337] md:text-[15px]"
+                  style={{ fontFamily: "var(--font-nunito), sans-serif" }}
                 >
                   {currentPage.choice.option_a.image_url && (
-                    <img
-                      src={currentPage.choice.option_a.image_url}
-                      alt={currentPage.choice.option_a.label}
-                      className="w-full h-32 object-cover"
-                    />
+                    <img src={currentPage.choice.option_a.image_url} alt={currentPage.choice.option_a.label} className="w-full h-24 object-cover" />
                   )}
                   <span className="block p-4">{currentPage.choice.option_a.label}</span>
                 </button>
                 <button
                   onClick={() => handleChoice("b")}
-                  className="rounded-xl bg-white border-2 border-indigo-200 overflow-hidden text-center font-medium text-indigo-700 hover:border-indigo-500 hover:bg-indigo-50 transition-all hover:shadow-md"
+                  className="overflow-hidden rounded-xl border-2 border-[#cfcfcf] bg-white text-center text-[13px] font-semibold text-black shadow-[2px_3px_0px_0px_#cfcfcf] transition-all hover:scale-[1.02] hover:border-[#f29337] hover:shadow-[2px_3px_0px_0px_#f29337] md:text-[15px]"
+                  style={{ fontFamily: "var(--font-nunito), sans-serif" }}
                 >
                   {currentPage.choice.option_b.image_url && (
-                    <img
-                      src={currentPage.choice.option_b.image_url}
-                      alt={currentPage.choice.option_b.label}
-                      className="w-full h-32 object-cover"
-                    />
+                    <img src={currentPage.choice.option_b.image_url} alt={currentPage.choice.option_b.label} className="w-full h-24 object-cover" />
                   )}
                   <span className="block p-4">{currentPage.choice.option_b.label}</span>
                 </button>
               </div>
             </div>
           )}
-        </div>
-      </main>
+        </section>
+      </div>
 
       <NarratorChat
         narratorId={narratorId}
         voiceId={voiceId}
         topic={topic}
         currentNarration={currentPage.narration}
-        narratorName={narratorName}
+        narratorName={narrator.name}
         onChatStatusChange={handleChatStatusChange}
       />
+    </main>
+  );
+}
+
+function NarratorBadge({ narrator }: { narrator: NarratorInfo }) {
+  return (
+    <div className="flex size-[48px] items-center justify-center overflow-hidden rounded-full border border-[#f09237] shadow-[2px_2px_20px_0px_#f09237] md:size-[60px]" style={{ backgroundColor: narrator.bg }}>
+      {narrator.image ? (
+        <div className="relative size-[38px] md:size-[48px]">
+          <Image src={narrator.image} alt={narrator.name} fill sizes="108px" className="object-contain" />
+        </div>
+      ) : (
+        <MicIconLarge />
+      )}
     </div>
+  );
+}
+
+function DecorLeaf({ src, size, rotate, className = "" }: { src: string; size: number; rotate: number; className?: string }) {
+  return (
+    <div className={`pointer-events-none absolute ${className}`} style={{ width: size, height: size, transform: `rotate(${rotate}deg)` }}>
+      <Image src={src} alt="" fill sizes="100px" className="object-contain" />
+    </div>
+  );
+}
+
+function MicIcon() {
+  return (
+    <div className="relative size-3.5 overflow-hidden md:size-4.5">
+      <div className="absolute inset-[4.17%_33.33%_33.33%_33.33%]"><img src="/figma/landing/mic-1.svg" alt="" className="size-full" /></div>
+      <div className="absolute inset-[37.5%_16.67%_16.67%_16.67%]"><img src="/figma/landing/mic-2.svg" alt="" className="size-full" /></div>
+      <div className="absolute bottom-[4.17%] left-[45.83%] right-[45.83%] top-3/4"><img src="/figma/landing/mic-3.svg" alt="" className="size-full" /></div>
+    </div>
+  );
+}
+
+function MicIconLarge() {
+  return (
+    <div className="relative size-12 overflow-hidden">
+      <div className="absolute inset-[4.17%_33.33%_33.33%_33.33%]"><img src="/figma/landing/mic-1.svg" alt="" className="size-full" /></div>
+      <div className="absolute inset-[37.5%_16.67%_16.67%_16.67%]"><img src="/figma/landing/mic-2.svg" alt="" className="size-full" /></div>
+      <div className="absolute bottom-[4.17%] left-[45.83%] right-[45.83%] top-3/4"><img src="/figma/landing/mic-3.svg" alt="" className="size-full" /></div>
+    </div>
+  );
+}
+
+function ArrowLeftSmall() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="md:size-5">
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
+  );
+}
+
+function ArrowRightSmall() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="md:size-5">
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  );
+}
+
+function ArrowLeftLarge() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="md:size-7">
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
+  );
+}
+
+function ArrowRightLarge() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f09237" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="md:size-7">
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  );
+}
+
+function HomeIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="md:size-7">
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <polyline points="9 22 9 12 15 12 15 22" />
+    </svg>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="md:size-7">
+      <rect x="9" y="7" width="5" height="18" rx="1.5" fill="white" />
+      <rect x="18" y="7" width="5" height="18" rx="1.5" fill="white" />
+    </svg>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="md:size-7">
+      <path d="M9 6.5C9 5.67157 9.92143 5.18743 10.6055 5.65149L24.6055 15.1515C25.215 15.5651 25.215 16.4349 24.6055 16.8485L10.6055 26.3485C9.92143 26.8126 9 26.3284 9 25.5V6.5Z" fill="white" />
+    </svg>
   );
 }

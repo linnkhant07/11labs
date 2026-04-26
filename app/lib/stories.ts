@@ -10,12 +10,19 @@ export interface PageVisual {
   time_of_day?: string;
 }
 
+export interface WordTimestamp {
+  word: string;
+  start: number;
+  end: number;
+}
+
 export interface Page {
   page_id: string;
   narration: string;
   image_prompt: string;
   image_url: string;
   audio_url: string;
+  timestamps?: WordTimestamp[];
   hotspots: Hotspot[];
   visual?: PageVisual;
   choice: null | {
