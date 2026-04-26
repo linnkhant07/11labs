@@ -91,7 +91,10 @@ export default function Home() {
   }
 
   return (
-    <main className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#fcebdc] to-[#fbfffd]">
+    <main
+      className="relative flex w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#fcebdc] to-[#fbfffd]"
+      style={{ zoom: 0.8, minHeight: "calc(100vh / 0.8)" }}
+    >
       {/* Decorative leaves */}
       <DecorLeaf src="/figma/landing/leaf-1.svg" size={91} rotate={26.41} className="right-[3%] top-[7%] hidden md:block" />
       <DecorLeaf src="/figma/landing/leaf-2.svg" size={63} rotate={-101.7} className="right-[8%] top-[4%] hidden md:block" />

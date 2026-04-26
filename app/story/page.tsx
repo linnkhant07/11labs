@@ -9,6 +9,7 @@ import { topicToSlug } from "../lib/generateUtils";
 import { NarratorChat } from "../components/narrator-chat";
 import { useNarrator } from "../components/narrator-context";
 import { MagnifyingGlass } from "../components/magnifying-glass";
+import { ChoicePage } from "../components/choice-page";
 
 const PLACEHOLDER_GRADIENTS = [
   "from-sky-300 to-cyan-500",
@@ -229,6 +230,28 @@ export default function StoryPage() {
 
   function handleRestart() { stopAudio(); setHasFinishedReading(false); setBranchChoices({}); setPageIndex(0); }
 
+  // --- Render: choice (Figma fullscreen takeover) ---
+  if (story && !generating && needsChoice && currentPage?.choice) {
+    return (
+      <ChoicePage
+        narrator={narrator}
+        storyTitle={story.title}
+        pageIndex={pageIndex}
+        totalPages={pages.length}
+        question={currentPage.choice.question}
+        optionA={{
+          label: currentPage.choice.option_a.label,
+          imageUrl: currentPage.choice.option_a.image_url,
+        }}
+        optionB={{
+          label: currentPage.choice.option_b.label,
+          imageUrl: currentPage.choice.option_b.image_url,
+        }}
+        onChoose={handleChoice}
+      />
+    );
+  }
+
   // --- Render: generating ---
   if (generating) {
     return (
@@ -376,34 +399,6 @@ export default function StoryPage() {
             )}
           </div>
 
-          {/* Choice UI */}
-          {needsChoice && currentPage.choice && (
-            <div className="w-full space-y-4 rounded-2xl border-2 border-[#fee8d3] bg-[#fef9f3] p-6">
-              <p className="text-center font-grandstander text-[14px] font-medium text-[#f29337] md:text-[17px]">{currentPage.choice.question}</p>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <button
-                  onClick={() => handleChoice("a")}
-                  className="overflow-hidden rounded-xl border-2 border-[#cfcfcf] bg-white text-center text-[13px] font-semibold text-black shadow-[2px_3px_0px_0px_#cfcfcf] transition-all hover:scale-[1.02] hover:border-[#f29337] hover:shadow-[2px_3px_0px_0px_#f29337] md:text-[15px]"
-                  style={{ fontFamily: "var(--font-nunito), sans-serif" }}
-                >
-                  {currentPage.choice.option_a.image_url && (
-                    <img src={currentPage.choice.option_a.image_url} alt={currentPage.choice.option_a.label} className="w-full h-24 object-cover" />
-                  )}
-                  <span className="block p-4">{currentPage.choice.option_a.label}</span>
-                </button>
-                <button
-                  onClick={() => handleChoice("b")}
-                  className="overflow-hidden rounded-xl border-2 border-[#cfcfcf] bg-white text-center text-[13px] font-semibold text-black shadow-[2px_3px_0px_0px_#cfcfcf] transition-all hover:scale-[1.02] hover:border-[#f29337] hover:shadow-[2px_3px_0px_0px_#f29337] md:text-[15px]"
-                  style={{ fontFamily: "var(--font-nunito), sans-serif" }}
-                >
-                  {currentPage.choice.option_b.image_url && (
-                    <img src={currentPage.choice.option_b.image_url} alt={currentPage.choice.option_b.label} className="w-full h-24 object-cover" />
-                  )}
-                  <span className="block p-4">{currentPage.choice.option_b.label}</span>
-                </button>
-              </div>
-            </div>
-          )}
         </section>
       </div>
 
