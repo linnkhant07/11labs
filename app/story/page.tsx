@@ -1,10 +1,13 @@
 "use client";
 
+import Image from "next/image";
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { getReadingOrder, TORNADO_STORY, PYRAMIDS_STORY, type Story, type Page } from "../lib/stories";
+import { NARRATORS, isNarratorId, getVoiceId, type NarratorId, type NarratorInfo } from "../lib/narrators";
 import { topicToSlug } from "../lib/generateUtils";
 import { NarratorChat } from "../components/narrator-chat";
+import { useNarrator } from "../components/narrator-context";
 import { MagnifyingGlass } from "../components/magnifying-glass";
 
 const PLACEHOLDER_GRADIENTS = [
@@ -15,24 +18,6 @@ const PLACEHOLDER_GRADIENTS = [
   "from-violet-300 to-purple-500",
   "from-rose-300 to-pink-500",
 ];
-
-const VOICE_IDS: Record<string, string> = {
-  mouse: "dfZGXKiIzjizWtJ0NgPy",
-  rabbit: "vGQNBgLaiM3EdZtxIiuY",
-  owl: "XsmrVB66q3D4TaXVaWNF",
-};
-
-const NARRATOR_NAMES: Record<string, string> = {
-  mouse: "Milo the Mouse",
-  rabbit: "Rosie the Rabbit",
-  owl: "Oliver the Owl",
-};
-
-const NARRATOR_LABELS: Record<string, string> = {
-  mouse: "\ud83d\udc2d Milo",
-  rabbit: "\ud83d\udc30 Rosie",
-  owl: "\ud83e\udd89 Oliver",
-};
 
 const INACTIVITY_TIMEOUT = 30_000;
 
@@ -64,15 +49,25 @@ function clearPageAudio(pages: Page[]) {
 
 export default function StoryPage() {
   const searchParams = useSearchParams();
-  const narratorId = searchParams.get("narrator") ?? "mouse";
+  const { narratorId: ctxNarratorId, customVoiceId, setNarrator } = useNarrator();
+  const urlNarrator = searchParams.get("narrator");
+  const narratorId: NarratorId = isNarratorId(urlNarrator ?? "")
+    ? (urlNarrator as NarratorId)
+    : ctxNarratorId;
+
+  useEffect(() => {
+    if (urlNarrator && isNarratorId(urlNarrator) && urlNarrator !== ctxNarratorId) {
+      setNarrator(urlNarrator);
+    }
+  }, [urlNarrator, ctxNarratorId, setNarrator]);
+
   const topic = searchParams.get("topic") ?? "tornadoes";
   const isDemo = searchParams.get("demo") === "1";
-  const customVoiceId = searchParams.get("voiceId");
 
   const demoStory: Story | null = isDemo
     ? {
         ...(topic.toLowerCase().includes("pyramid") ? PYRAMIDS_STORY : TORNADO_STORY),
-        narrator: { type: "animal", character: narratorId as "mouse" | "rabbit" | "owl", voice_id: "" },
+        narrator: { type: "animal", character: narratorId, voice_id: "" },
       }
     : null;
 
@@ -90,9 +85,8 @@ export default function StoryPage() {
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nudgeCount = useRef(0);
 
-  const narratorLabel = narratorId === "custom" ? "🎙️ Your Voice" : (NARRATOR_LABELS[narratorId] ?? NARRATOR_LABELS.mouse);
-  const narratorName = narratorId === "custom" ? "Your narrator" : (NARRATOR_NAMES[narratorId] ?? NARRATOR_NAMES.mouse);
-  const voiceId = customVoiceId ?? VOICE_IDS[narratorId] ?? VOICE_IDS.mouse;
+  const narrator = NARRATORS[narratorId];
+  const voiceId = getVoiceId(narratorId, customVoiceId);
 
   // --- Story generation (try cache first, then generate) ---
   useEffect(() => {
@@ -102,15 +96,13 @@ export default function StoryPage() {
       setGenerating(true);
       setError(null);
       try {
-        // Check for cached story first
         const slug = topicToSlug(topic);
         const cached = await fetch(`/stories/${slug}/story.json`, { signal: controller.signal });
         if (cached.ok) {
           const data: Story = await cached.json();
-          // If cached narrator doesn't match user's pick, clear audio so it regenerates on-demand with the right voice
           const cachedVoice = data.narrator?.voice_id;
           if (cachedVoice && cachedVoice !== voiceId) {
-            console.log(`[story] Cached story voice mismatch (cached: ${data.narrator.character}, selected: ${narratorId}) — audio will regenerate on-demand`);
+            console.log(`[story] Cached story voice mismatch — audio will regenerate on-demand`);
             clearPageAudio(data.pages);
           }
           console.log(`[story] Loaded cached story for "${topic}"`);
@@ -118,7 +110,6 @@ export default function StoryPage() {
           return;
         }
 
-        // No cache — generate from scratch
         console.log(`[story] No cache for "${topic}", generating...`);
         const res = await fetch("/api/generate", {
           method: "POST",
@@ -138,7 +129,7 @@ export default function StoryPage() {
     }
     generate();
     return () => { controller.abort(); };
-  }, [topic, narratorId]);
+  }, [topic, narratorId, voiceId, isDemo]);
 
   const pages = useMemo(
     () => (story ? getReadingOrder(story.pages, branchChoices) : []),
@@ -170,7 +161,6 @@ export default function StoryPage() {
       return;
     }
 
-    // Fallback: on-demand TTS
     setLoading(true);
     setPlaying(true);
     try {
@@ -206,20 +196,11 @@ export default function StoryPage() {
   useEffect(() => {
     if (!currentPage || generating) return;
     setHasFinishedReading(false);
-
-    // Delay slightly to let React strict mode cleanup run first
-    const timeout = setTimeout(() => {
-      playNarration(currentPage);
-    }, 50);
-
-    return () => {
-      clearTimeout(timeout);
-      stopAudio();
-    };
+    const timeout = setTimeout(() => { playNarration(currentPage); }, 50);
+    return () => { clearTimeout(timeout); stopAudio(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage?.page_id, generating]);
 
-  // --- Stop narration when chat starts ---
   const handleChatStatusChange = useCallback((active: boolean) => {
     setChatActive(active);
     if (active) stopAudio();
@@ -247,7 +228,7 @@ export default function StoryPage() {
         })
         .catch(() => {});
     }, INACTIVITY_TIMEOUT);
-  }, [narratorId]);
+  }, [narratorId, voiceId]);
 
   useEffect(() => {
     if (generating || !story) return;
@@ -282,186 +263,279 @@ export default function StoryPage() {
 
   function handleRestart() { stopAudio(); setHasFinishedReading(false); setBranchChoices({}); setPageIndex(0); }
 
-  // --- Render ---
+  // --- Render: generating ---
   if (generating) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-sky-50 to-indigo-50">
-        <div className="text-center space-y-4">
-          <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600" />
-          <p className="text-lg font-semibold text-indigo-800">
-            {narratorLabel} is creating your story about {topic}...
-          </p>
-          <p className="text-sm text-indigo-400">Generating story and narration audio</p>
+      <main className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#fcebdc] to-white px-6">
+        <div className="text-center space-y-6">
+          <div className="mx-auto inline-block h-16 w-16 animate-spin rounded-full border-4 border-[#f29337]/20 border-t-[#f29337]" />
+          <h2 className="font-chelsea text-[28px] text-black md:text-[36px]">
+            {narrator.short} is creating your story...
+          </h2>
+          <p className="font-grandstander text-[18px] text-[#585858]">About: {topic}</p>
         </div>
-      </div>
+      </main>
     );
   }
 
+  // --- Render: error ---
   if (error || !story || !currentPage) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-sky-50 to-indigo-50">
-        <div className="text-center space-y-4">
-          <p className="text-lg font-semibold text-red-600">{error ?? "Something went wrong"}</p>
-          <a href="/" className="inline-block rounded-full bg-indigo-500 px-6 py-3 text-sm font-bold text-white hover:bg-indigo-600">
+      <main className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#fcebdc] to-white px-6">
+        <div className="text-center space-y-6">
+          <p className="font-grandstander text-[20px] text-red-600">{error ?? "Something went wrong"}</p>
+          <a href="/" className="inline-block rounded-full bg-[#f09237] px-8 py-3 font-grandstander text-[18px] font-medium text-white shadow-[2px_4px_0px_0px_#db6c00] transition-transform hover:scale-[1.03]">
             Try Again
           </a>
         </div>
-      </div>
+      </main>
     );
   }
 
-  return (
-    <div className="flex min-h-screen flex-col bg-gradient-to-b from-sky-50 to-indigo-50">
-      <header className="flex items-center justify-between px-6 py-4 bg-white/70 backdrop-blur border-b border-indigo-100">
-        <span className="text-sm font-bold text-indigo-900">{story.title}</span>
-        <div className="flex items-center gap-4 text-sm text-indigo-500">
-          <span>Narrated by {narratorLabel}</span>
-          <span className="text-indigo-300">|</span>
-          <span>Page {pageIndex + 1} of {pages.length}{needsChoice ? "+" : ""}</span>
-        </div>
-      </header>
+  const totalPages = pages.length;
 
-      <main className="flex flex-1 flex-col items-center justify-center px-6 py-8">
-        <div className="w-full max-w-4xl space-y-6">
-          {/* Illustration */}
-          <div className="relative h-64 md:h-80 w-full rounded-3xl overflow-hidden shadow-inner">
-            {currentPage.image_url ? (
-              <>
-                <img
-                  src={currentPage.image_url}
-                  alt={currentPage.image_prompt}
-                  className="h-full w-full object-cover"
-                />
-                <MagnifyingGlass
-                  imageUrl={currentPage.image_url}
-                  topic={topic}
-                  narration={currentPage.narration}
-                  narrator={narratorId}
-                />
-              </>
-            ) : (
-              <div className={`h-full w-full bg-gradient-to-br ${getGradient(pageIndex)} flex items-center justify-center`}>
-                <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_30%_40%,white_0%,transparent_60%)]" />
-                <p className="text-white/70 text-sm font-medium px-8 text-center italic">
-                  {currentPage.image_prompt}
-                </p>
+  return (
+    <main className="relative min-h-screen w-full overflow-hidden bg-gradient-to-b from-[#fcebdc] to-white">
+      {/* Decorative leaves */}
+      <DecorLeaf src="/figma/landing/leaf-3.svg" size={78} rotate={18.88} className="left-[2%] top-[48%] hidden md:block" />
+      <DecorLeaf src="/figma/landing/leaf-1.svg" size={91} rotate={55.56} className="right-[3%] top-[5%] hidden md:block" />
+      <DecorLeaf src="/figma/landing/leaf-2.svg" size={63} rotate={-72.55} className="right-[8%] top-[12%] hidden md:block" />
+
+      <div className="relative mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-6 py-10 md:px-16 md:py-20 md:gap-14 lg:px-24">
+        {/* Header */}
+        <header className="flex w-full flex-wrap items-center justify-between gap-6">
+          <div className="flex items-center gap-6 md:gap-12">
+            <NarratorBadge narrator={narrator} />
+            <div className="flex flex-col gap-2 md:gap-3">
+              <h1 className="font-chelsea text-[28px] leading-tight text-black md:text-[44px]">{story.title}</h1>
+              <p className="text-[16px] text-[#585858] md:text-[24px]" style={{ fontFamily: "var(--font-abeezee), sans-serif" }}>
+                Narrator: {narrator.name}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => { document.querySelector<HTMLButtonElement>("[data-narrator-chat-trigger]")?.click(); }}
+            className="flex items-center justify-center gap-4 rounded-[48px] bg-[#f09237] px-8 py-4 shadow-[2px_8px_0px_0px_#db6c00,2px_2px_20px_rgba(0,0,0,0.1)] transition-transform hover:scale-[1.03] active:translate-y-[2px] active:shadow-[2px_4px_0px_0px_#db6c00,2px_2px_20px_rgba(0,0,0,0.1)] md:gap-6 md:px-12 md:py-[26px]"
+          >
+            <MicIcon />
+            <span className="font-grandstander text-[20px] font-medium text-[#fef9f3] md:text-[26px]">Talk to {narrator.short}</span>
+          </button>
+        </header>
+
+        {/* Story card */}
+        <section className="flex w-full flex-col items-center gap-8 rounded-[24px] bg-white p-6 shadow-[2px_2px_5px_rgba(0,0,0,0.1)] md:gap-12 md:px-10 md:py-[60px]">
+          {/* Page indicator + progress */}
+          <div className="flex w-full flex-col items-center gap-6 md:gap-8">
+            <div className="flex items-center justify-center gap-8 md:gap-10">
+              <button onClick={handlePrev} disabled={pageIndex === 0} aria-label="Previous page" className="transition-transform hover:scale-110 disabled:opacity-30">
+                <ArrowLeftSmall />
+              </button>
+              <span className="font-grandstander text-[22px] font-medium text-black md:text-[28px]">Page {pageIndex + 1} of {totalPages}</span>
+              <button onClick={handleNext} disabled={pageIndex === totalPages - 1 || !!needsChoice} aria-label="Next page" className="transition-transform hover:scale-110 disabled:opacity-30">
+                <ArrowRightSmall />
+              </button>
+            </div>
+            <div className="flex w-full max-w-full gap-3">
+              {Array.from({ length: totalPages }).map((_, i) => (
+                <div key={i} className="h-[6px] flex-1 rounded-full transition-colors" style={{ backgroundColor: i <= pageIndex ? "#f09237" : "#eaeaea" }} />
+              ))}
+            </div>
+          </div>
+
+          {/* Image */}
+          <div className="relative w-full overflow-hidden rounded-[24px] shadow-[2px_2px_5px_rgba(0,0,0,0.1)]">
+            <div className="relative aspect-[1112/360] w-full">
+              {currentPage.image_url ? (
+                <>
+                  <img src={currentPage.image_url} alt={currentPage.image_prompt} className="absolute inset-0 size-full rounded-[24px] object-cover" />
+                  <MagnifyingGlass imageUrl={currentPage.image_url} topic={topic} narration={currentPage.narration} narrator={narratorId} />
+                </>
+              ) : (
+                <div className={`size-full bg-gradient-to-br ${getGradient(pageIndex)} flex items-center justify-center rounded-[24px]`}>
+                  <p className="px-8 text-center text-sm font-medium italic text-white/70">{currentPage.image_prompt}</p>
+                </div>
+              )}
+              <div className="pointer-events-none absolute left-4 top-4 flex items-center justify-center rounded-full bg-[#f09237] p-3 shadow-[0px_0px_10px_#f09237] md:left-6 md:top-6 md:p-4">
+                <SearchIcon />
               </div>
-            )}
+            </div>
           </div>
 
           {/* Narration text */}
-          <div className="rounded-2xl bg-white p-6 md:p-8 shadow-sm border border-indigo-100">
-            <p className="text-lg leading-relaxed text-gray-700">
-              {stripMarkdown(currentPage.narration)}
-            </p>
-          </div>
+          <p className="w-full text-[18px] leading-[1.7] text-black md:text-[24px] md:leading-[2]" style={{ fontFamily: "var(--font-abeezee), sans-serif" }}>
+            {stripMarkdown(currentPage.narration)}
+          </p>
 
           {/* Re-engagement nudge */}
           {nudgeText && (
-            <div
-              className="rounded-2xl bg-amber-50 border-2 border-amber-200 p-4 text-center cursor-pointer transition-all hover:bg-amber-100"
-              onClick={() => setNudgeText(null)}
-            >
-              <p className="text-sm font-medium text-amber-800">
-                {narratorLabel}: &ldquo;{nudgeText}&rdquo;
-              </p>
-              <p className="text-xs text-amber-500 mt-1">Tap to dismiss</p>
+            <div className="w-full cursor-pointer rounded-2xl border-2 border-[#fee8d3] bg-[#fef5ea] p-4 text-center transition-all hover:bg-[#fee8d3]" onClick={() => setNudgeText(null)}>
+              <p className="font-grandstander text-[16px] font-medium text-[#f09237]">{narrator.short}: &ldquo;{nudgeText}&rdquo;</p>
+              <p className="mt-1 text-xs text-[#b4b4b4]">Tap to dismiss</p>
             </div>
           )}
 
-          {/* Controls */}
-          <div className="flex items-center justify-between">
-            <button
-              onClick={handlePrev}
-              disabled={pageIndex === 0}
-              className={`rounded-full px-5 py-2.5 text-sm font-semibold transition-all ${
-                pageIndex === 0 ? "text-gray-300 cursor-not-allowed" : "text-indigo-600 hover:bg-indigo-50"
-              }`}
-            >
-              &larr; Back
+          {/* Bottom controls */}
+          <div className="relative flex w-full items-center justify-between">
+            <button onClick={handlePrev} disabled={pageIndex === 0} aria-label="Previous page" className="flex size-16 items-center justify-center rounded-full border border-[#eaeaea] bg-[#eaeaea] shadow-[2px_2px_5px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 disabled:opacity-40 md:size-20">
+              <ArrowLeftLarge />
             </button>
-
-            {playing ? (
-              <button
-                onClick={handleSpeak}
-                className="rounded-full px-8 py-3 text-sm font-bold transition-all shadow-md bg-red-500 text-white hover:bg-red-600"
-              >
-                Stop
-              </button>
-            ) : loading ? (
-              <button
-                disabled
-                className="rounded-full px-8 py-3 text-sm font-bold shadow-md bg-gray-300 text-gray-500 cursor-wait"
-              >
-                Loading...
-              </button>
-            ) : hasFinishedReading ? (
-              <button
-                onClick={handleSpeak}
-                className="rounded-full px-8 py-3 text-sm font-bold transition-all shadow-md bg-gradient-to-r from-indigo-500 to-purple-600 text-white hover:shadow-lg"
-              >
-                {"\ud83d\udd01"} Read Again
-              </button>
-            ) : null}
-
-            {needsChoice ? (
-              <div className="text-sm text-indigo-400 font-medium">Make a choice &darr;</div>
-            ) : isLastPage ? (
-              <button onClick={handleRestart} className="rounded-full px-5 py-2.5 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 transition-all">
-                Restart
-              </button>
-            ) : (
-              <button onClick={handleNext} className="rounded-full px-5 py-2.5 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 transition-all">
-                Next &rarr;
-              </button>
-            )}
+            <button onClick={handleSpeak} disabled={loading} aria-label={playing ? "Pause" : "Play"} className="flex size-16 items-center justify-center rounded-full bg-[#f09237] shadow-[2px_2px_10px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 disabled:opacity-60 md:size-20">
+              {loading ? (
+                <span className="size-6 animate-spin rounded-full border-2 border-white/40 border-t-white md:size-8" />
+              ) : playing ? (
+                <PauseIcon />
+              ) : (
+                <PlayIcon />
+              )}
+            </button>
+            <button onClick={isLastPage ? handleRestart : handleNext} disabled={!!needsChoice} aria-label={isLastPage ? "Restart" : "Next page"} className="flex size-16 items-center justify-center rounded-full border border-[#fee8d3] bg-[#fee8d3] shadow-[2px_2px_5px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 disabled:opacity-40 md:size-20">
+              <ArrowRightLarge />
+            </button>
           </div>
 
           {/* Choice UI */}
           {needsChoice && currentPage.choice && (
-            <div className="rounded-2xl bg-indigo-50 border-2 border-indigo-200 p-6 space-y-4">
-              <p className="text-center font-semibold text-indigo-800">{currentPage.choice.question}</p>
-              <div className="grid grid-cols-2 gap-4">
+            <div className="w-full space-y-4 rounded-2xl border-2 border-[#fee8d3] bg-[#fef9f3] p-6">
+              <p className="text-center font-grandstander text-[18px] font-medium text-[#f29337] md:text-[22px]">{currentPage.choice.question}</p>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <button
                   onClick={() => handleChoice("a")}
-                  className="rounded-xl bg-white border-2 border-indigo-200 overflow-hidden text-center font-medium text-indigo-700 hover:border-indigo-500 hover:bg-indigo-50 transition-all hover:shadow-md"
+                  className="overflow-hidden rounded-xl border-2 border-[#cfcfcf] bg-white text-center text-[16px] font-semibold text-black shadow-[2px_3px_0px_0px_#cfcfcf] transition-all hover:scale-[1.02] hover:border-[#f29337] hover:shadow-[2px_3px_0px_0px_#f29337] md:text-[18px]"
+                  style={{ fontFamily: "var(--font-nunito), sans-serif" }}
                 >
                   {currentPage.choice.option_a.image_url && (
-                    <img
-                      src={currentPage.choice.option_a.image_url}
-                      alt={currentPage.choice.option_a.label}
-                      className="w-full h-32 object-cover"
-                    />
+                    <img src={currentPage.choice.option_a.image_url} alt={currentPage.choice.option_a.label} className="w-full h-32 object-cover" />
                   )}
                   <span className="block p-4">{currentPage.choice.option_a.label}</span>
                 </button>
                 <button
                   onClick={() => handleChoice("b")}
-                  className="rounded-xl bg-white border-2 border-indigo-200 overflow-hidden text-center font-medium text-indigo-700 hover:border-indigo-500 hover:bg-indigo-50 transition-all hover:shadow-md"
+                  className="overflow-hidden rounded-xl border-2 border-[#cfcfcf] bg-white text-center text-[16px] font-semibold text-black shadow-[2px_3px_0px_0px_#cfcfcf] transition-all hover:scale-[1.02] hover:border-[#f29337] hover:shadow-[2px_3px_0px_0px_#f29337] md:text-[18px]"
+                  style={{ fontFamily: "var(--font-nunito), sans-serif" }}
                 >
                   {currentPage.choice.option_b.image_url && (
-                    <img
-                      src={currentPage.choice.option_b.image_url}
-                      alt={currentPage.choice.option_b.label}
-                      className="w-full h-32 object-cover"
-                    />
+                    <img src={currentPage.choice.option_b.image_url} alt={currentPage.choice.option_b.label} className="w-full h-32 object-cover" />
                   )}
                   <span className="block p-4">{currentPage.choice.option_b.label}</span>
                 </button>
               </div>
             </div>
           )}
-        </div>
-      </main>
+        </section>
+      </div>
 
       <NarratorChat
         narratorId={narratorId}
         voiceId={voiceId}
         topic={topic}
         currentNarration={currentPage.narration}
-        narratorName={narratorName}
+        narratorName={narrator.name}
         onChatStatusChange={handleChatStatusChange}
       />
+    </main>
+  );
+}
+
+function NarratorBadge({ narrator }: { narrator: NarratorInfo }) {
+  return (
+    <div className="flex size-[80px] items-center justify-center overflow-hidden rounded-full border border-[#f09237] shadow-[2px_2px_20px_0px_#f09237] md:size-[108px]" style={{ backgroundColor: narrator.bg }}>
+      {narrator.image ? (
+        <div className="relative size-[64px] md:size-[88px]">
+          <Image src={narrator.image} alt={narrator.name} fill sizes="108px" className="object-contain" />
+        </div>
+      ) : (
+        <MicIconLarge />
+      )}
     </div>
+  );
+}
+
+function DecorLeaf({ src, size, rotate, className = "" }: { src: string; size: number; rotate: number; className?: string }) {
+  return (
+    <div className={`pointer-events-none absolute ${className}`} style={{ width: size, height: size, transform: `rotate(${rotate}deg)` }}>
+      <Image src={src} alt="" fill sizes="100px" className="object-contain" />
+    </div>
+  );
+}
+
+function MicIcon() {
+  return (
+    <div className="relative size-6 overflow-hidden md:size-7">
+      <div className="absolute inset-[4.17%_33.33%_33.33%_33.33%]"><img src="/figma/landing/mic-1.svg" alt="" className="size-full" /></div>
+      <div className="absolute inset-[37.5%_16.67%_16.67%_16.67%]"><img src="/figma/landing/mic-2.svg" alt="" className="size-full" /></div>
+      <div className="absolute bottom-[4.17%] left-[45.83%] right-[45.83%] top-3/4"><img src="/figma/landing/mic-3.svg" alt="" className="size-full" /></div>
+    </div>
+  );
+}
+
+function MicIconLarge() {
+  return (
+    <div className="relative size-12 overflow-hidden">
+      <div className="absolute inset-[4.17%_33.33%_33.33%_33.33%]"><img src="/figma/landing/mic-1.svg" alt="" className="size-full" /></div>
+      <div className="absolute inset-[37.5%_16.67%_16.67%_16.67%]"><img src="/figma/landing/mic-2.svg" alt="" className="size-full" /></div>
+      <div className="absolute bottom-[4.17%] left-[45.83%] right-[45.83%] top-3/4"><img src="/figma/landing/mic-3.svg" alt="" className="size-full" /></div>
+    </div>
+  );
+}
+
+function ArrowLeftSmall() {
+  return (
+    <div className="relative size-7 overflow-hidden md:size-8">
+      <div className="absolute inset-[16.67%_45.83%_16.67%_16.67%]"><img src="/figma/category/arrow-1.svg" alt="" className="size-full" style={{ filter: "grayscale(100%) brightness(0.6)" }} /></div>
+      <div className="absolute inset-[45.83%_16.67%]"><img src="/figma/category/arrow-2.svg" alt="" className="size-full" style={{ filter: "grayscale(100%) brightness(0.6)" }} /></div>
+    </div>
+  );
+}
+
+function ArrowRightSmall() {
+  return (
+    <div className="relative h-7 w-6 overflow-hidden md:h-8 md:w-7">
+      <div className="absolute inset-[45.83%_16.67%]"><img src="/figma/storybook/arrow-right-2.svg" alt="" className="size-full" style={{ filter: "grayscale(100%) brightness(0.6)" }} /></div>
+      <div className="absolute inset-[16.67%_16.67%_16.67%_45.83%]"><img src="/figma/storybook/arrow-right-1.svg" alt="" className="size-full" style={{ filter: "grayscale(100%) brightness(0.6)" }} /></div>
+    </div>
+  );
+}
+
+function ArrowLeftLarge() {
+  return (
+    <div className="relative size-9 overflow-hidden md:size-10">
+      <div className="absolute inset-[16.67%_45.83%_16.67%_16.67%]"><img src="/figma/category/arrow-1.svg" alt="" className="size-full" /></div>
+      <div className="absolute inset-[45.83%_16.67%]"><img src="/figma/category/arrow-2.svg" alt="" className="size-full" /></div>
+    </div>
+  );
+}
+
+function ArrowRightLarge() {
+  return (
+    <div className="relative h-9 w-8 overflow-hidden md:h-10 md:w-9">
+      <div className="absolute inset-[45.83%_16.67%]"><img src="/figma/storybook/arrow-right-2.svg" alt="" className="size-full" /></div>
+      <div className="absolute inset-[16.67%_16.67%_16.67%_45.83%]"><img src="/figma/storybook/arrow-right-1.svg" alt="" className="size-full" /></div>
+    </div>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <div className="relative size-7 overflow-hidden md:size-9">
+      <div className="absolute inset-[8.33%_16.67%_16.67%_8.33%]"><img src="/figma/storybook/search-1.svg" alt="" className="size-full" /></div>
+      <div className="absolute inset-[65.42%_8.33%_8.33%_65.42%]"><img src="/figma/storybook/search-2.svg" alt="" className="size-full" /></div>
+    </div>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <div className="relative size-8 overflow-hidden md:size-10">
+      <div className="absolute inset-[12.5%_54.17%_12.5%_20.83%]"><img src="/figma/storybook/pause-bar.svg" alt="" className="size-full" /></div>
+      <div className="absolute inset-[12.5%_20.83%_12.5%_54.17%]"><img src="/figma/storybook/pause-bar.svg" alt="" className="size-full" /></div>
+    </div>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="md:size-10">
+      <path d="M9 6.5C9 5.67157 9.92143 5.18743 10.6055 5.65149L24.6055 15.1515C25.215 15.5651 25.215 16.4349 24.6055 16.8485L10.6055 26.3485C9.92143 26.8126 9 26.3284 9 25.5V6.5Z" fill="white" />
+    </svg>
   );
 }

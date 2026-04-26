@@ -1,279 +1,221 @@
 "use client";
 
-import { useState, useRef } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { useNarrator } from "./components/narrator-context";
+import { NARRATORS, isNarratorId, type NarratorId } from "./lib/narrators";
 
-const NARRATORS = [
-  { id: "mouse", emoji: "\ud83d\udc2d", name: "Milo the Mouse" },
-  { id: "rabbit", emoji: "\ud83d\udc30", name: "Rosie the Rabbit" },
-  { id: "owl", emoji: "\ud83e\udd89", name: "Oliver the Owl" },
-] as const;
+type NarratorOption = {
+  id: NarratorId | "record";
+  name: string;
+  bg: string;
+  image?: string;
+  imageSize?: number;
+  isRecord?: boolean;
+};
 
-const SUGGESTED_TOPICS = [
-  { emoji: "\ud83c\udf2a\ufe0f", name: "Tornadoes" },
-  { emoji: "\ud83d\udea7", name: "Pyramids" },
-  { emoji: "\ud83c\udf0b", name: "Volcanoes" },
-  { emoji: "\ud83e\udd96", name: "Dinosaurs" },
-  { emoji: "\ud83d\ude80", name: "Space" },
-  { emoji: "\ud83c\udf0a", name: "Ocean" },
+const NARRATOR_OPTIONS: NarratorOption[] = [
+  {
+    id: "record",
+    name: "Record a Voice",
+    bg: "#f29337",
+    isRecord: true,
+  },
+  {
+    id: "mouse",
+    name: NARRATORS.mouse.name,
+    bg: NARRATORS.mouse.bg,
+    image: NARRATORS.mouse.image,
+    imageSize: 100,
+  },
+  {
+    id: "rabbit",
+    name: NARRATORS.rabbit.name,
+    bg: NARRATORS.rabbit.bg,
+    image: NARRATORS.rabbit.image,
+    imageSize: 100,
+  },
+  {
+    id: "owl",
+    name: NARRATORS.owl.name,
+    bg: NARRATORS.owl.bg,
+    image: NARRATORS.owl.image,
+    imageSize: 128,
+  },
+];
+
+type LibraryItem = {
+  id: string;
+  title: string;
+  emoji?: string;
+  isCreate?: boolean;
+};
+
+const LIBRARY: LibraryItem[] = [
+  { id: "create", title: "Create a New Story", isCreate: true },
+  { id: "tornadoes", title: "What are Tornadoes?", emoji: "\ud83c\udf2a\ufe0f" },
+  { id: "rainforests", title: "Rainforests Ecosystems", emoji: "\ud83e\udd9c" },
+  { id: "titanic", title: "The Titanic", emoji: "\ud83d\udea2" },
 ];
 
 export default function Home() {
   const router = useRouter();
-  const [narrator, setNarrator] = useState<string | null>(null);
-  const [topic, setTopic] = useState("");
-  const [demoMode, setDemoMode] = useState(true);
+  const { setNarrator } = useNarrator();
+  const [selected, setSelected] = useState<NarratorOption["id"] | null>(null);
 
-  // Voice cloning state
-  const [cloning, setCloning] = useState(false);
-  const [clonedVoiceId, setClonedVoiceId] = useState<string | null>(null);
-  const [cloneError, setCloneError] = useState<string | null>(null);
-  const [recording, setRecording] = useState(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  function chooseNarrator(id: NarratorOption["id"]) {
+    setSelected(id);
+    if (isNarratorId(id)) setNarrator(id);
+  }
 
-  function handleStart() {
-    if (!narrator || !topic.trim()) return;
+  function handleStart(item: LibraryItem) {
+    if (!selected) return;
+    const narratorId = selected === "record" ? "custom" : selected;
+    if (item.isCreate) {
+      router.push(`/new-story?narrator=${narratorId}`);
+      return;
+    }
     const params = new URLSearchParams({
-      topic: topic.trim(),
-      narrator,
-      ...(demoMode ? { demo: "1" } : {}),
-      ...(narrator === "custom" && clonedVoiceId ? { voiceId: clonedVoiceId } : {}),
+      topic: item.title,
+      narrator: narratorId,
     });
     router.push(`/story?${params.toString()}`);
   }
 
-  async function startRecording() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      chunksRef.current = [];
+  return (
+    <main className="relative min-h-screen w-full overflow-hidden bg-gradient-to-b from-[#fcebdc] to-[#fbfffd]">
+      {/* Decorative leaves */}
+      <DecorLeaf src="/figma/landing/leaf-1.svg" size={91} rotate={26.41} className="right-[3%] top-[7%] hidden md:block" />
+      <DecorLeaf src="/figma/landing/leaf-2.svg" size={63} rotate={-101.7} className="right-[8%] top-[4%] hidden md:block" />
+      <DecorLeaf src="/figma/landing/leaf-3.svg" size={77} rotate={18.88} className="left-[2%] top-[42%] hidden md:block" />
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
+      <div className="relative mx-auto flex w-full max-w-[1280px] flex-col gap-14 px-6 py-12 md:px-16 md:py-20 lg:px-24">
+        {/* Title */}
+        <h1 className="font-chelsea text-[36px] text-black md:text-[44px]">
+          Welcome to educ-ATE! 👋
+        </h1>
 
-      mediaRecorder.start();
-      setRecording(true);
-      setCloneError(null);
-    } catch {
-      setCloneError("Could not access microphone");
-    }
-  }
+        {/* Narrator card */}
+        <section className="flex w-full flex-col items-start gap-10 rounded-[24px] bg-white p-6 shadow-[2px_2px_5px_rgba(0,0,0,0.1)] md:p-10">
+          <h2 className="font-grandstander text-[26px] font-medium text-black md:text-[32px]">
+            Choose your Narrator
+          </h2>
+          <div className="flex w-full flex-wrap gap-6">
+            {NARRATOR_OPTIONS.map((n) => (
+              <NarratorAvatar
+                key={n.id}
+                narrator={n}
+                selected={selected === n.id}
+                onSelect={() => {
+                  chooseNarrator(n.id);
+                  if (n.isRecord) router.push("/record-voice");
+                }}
+              />
+            ))}
+          </div>
+        </section>
 
-  async function stopRecordingAndClone() {
-    const mediaRecorder = mediaRecorderRef.current;
-    if (!mediaRecorder) return;
+        {/* Library card */}
+        <section className="flex w-full flex-col items-start gap-10 rounded-[24px] bg-white p-6 shadow-[2px_2px_5px_rgba(0,0,0,0.1)] md:p-10">
+          <div className="flex w-full flex-wrap items-baseline justify-between gap-2">
+            <h2 className="font-grandstander text-[26px] font-medium text-black md:text-[32px]">
+              Your Library
+            </h2>
+            {!selected && (
+              <p
+                className="text-[14px] text-[#a05a1f] md:text-[16px]"
+                style={{ fontFamily: "var(--font-abeezee), sans-serif" }}
+              >
+                Pick a narrator above to begin.
+              </p>
+            )}
+          </div>
+          <div className="grid w-full grid-cols-2 gap-7 sm:grid-cols-3 lg:grid-cols-4">
+            {LIBRARY.map((item) => (
+              <LibraryCard key={item.id} item={item} disabled={!selected} onSelect={() => handleStart(item)} />
+            ))}
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
 
-    return new Promise<void>((resolve) => {
-      mediaRecorder.onstop = async () => {
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        mediaRecorder.stream.getTracks().forEach((t) => t.stop());
-        setRecording(false);
-        setCloning(true);
-        setCloneError(null);
-
-        try {
-          const formData = new FormData();
-          formData.append("audio", blob, "recording.webm");
-
-          const res = await fetch("/api/clone-voice", {
-            method: "POST",
-            body: formData,
-          });
-          const data = await res.json();
-
-          if (!res.ok) throw new Error(data.error ?? "Cloning failed");
-
-          setClonedVoiceId(data.voiceId);
-          setNarrator("custom");
-        } catch (err) {
-          setCloneError(err instanceof Error ? err.message : "Cloning failed");
-        } finally {
-          setCloning(false);
-        }
-        resolve();
-      };
-      mediaRecorder.stop();
-    });
-  }
-
-  const canStart = narrator && topic.trim() && (narrator !== "custom" || clonedVoiceId);
+function NarratorAvatar({ narrator, selected, onSelect }: { narrator: NarratorOption; selected: boolean; onSelect: () => void }) {
+  const baseShadow = "2px 2px 20px 0px rgba(0,0,0,0.15)";
+  const selectedShadow = "2px 2px 20px 0px #f29337";
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-sky-100 to-indigo-100 px-6 py-12">
-      <div className="w-full max-w-2xl space-y-10">
-        {/* Title */}
-        <div className="text-center space-y-2">
-          <h1 className="text-5xl font-extrabold tracking-tight text-indigo-900">
-            educ-ATE
-          </h1>
-          <p className="text-lg text-indigo-600">
-            Pick a topic and a narrator to start your adventure!
-          </p>
-        </div>
-
-        {/* Topic input */}
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-widest text-indigo-400">
-            What do you want to learn about?
-          </h2>
-          <input
-            type="text"
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            placeholder="Type anything... tornadoes, dinosaurs, black holes..."
-            className="w-full rounded-2xl border-2 border-gray-200 bg-white px-5 py-4 text-lg text-gray-800 placeholder-gray-400 outline-none transition-all focus:border-indigo-400 focus:shadow-md"
-          />
-          <div className="flex flex-wrap gap-2">
-            {SUGGESTED_TOPICS.map((t) => (
-              <button
-                key={t.name}
-                onClick={() => setTopic(t.name)}
-                className={`rounded-full border px-3 py-1.5 text-sm transition-all ${
-                  topic === t.name
-                    ? "border-indigo-400 bg-indigo-50 text-indigo-700"
-                    : "border-gray-200 bg-white text-gray-600 hover:border-indigo-300"
-                }`}
-              >
-                {t.emoji} {t.name}
-              </button>
-            ))}
+    <button onClick={onSelect} className="flex w-[140px] flex-col items-center gap-7 transition-transform hover:scale-[1.03] focus:outline-none md:w-[160px]">
+      <div
+        className="flex size-[112px] items-center justify-center overflow-hidden rounded-full md:size-[128px]"
+        style={{ backgroundColor: narrator.bg, border: selected ? "2px solid #f09237" : undefined, boxShadow: selected ? selectedShadow : baseShadow }}
+      >
+        {narrator.isRecord ? (
+          <MicIcon />
+        ) : narrator.id === "owl" ? (
+          <Image src={narrator.image!} alt={narrator.name} width={128} height={128} className="size-full object-cover" />
+        ) : (
+          <div className="relative shrink-0" style={{ width: narrator.imageSize, height: narrator.imageSize }}>
+            <Image src={narrator.image!} alt={narrator.name} fill sizes="100px" className="object-contain" />
           </div>
-        </div>
-
-        {/* Narrator selection */}
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-widest text-indigo-400">
-            Who should tell the story?
-          </h2>
-          <div className="grid grid-cols-3 gap-4">
-            {NARRATORS.map((n) => (
-              <button
-                key={n.id}
-                onClick={() => setNarrator(n.id)}
-                className={`rounded-2xl border-2 p-5 text-center transition-all ${
-                  narrator === n.id
-                    ? "border-indigo-500 bg-indigo-50 shadow-lg scale-[1.02]"
-                    : "border-gray-200 bg-white hover:border-indigo-300 hover:shadow-md"
-                }`}
-              >
-                <span className="text-5xl">{n.emoji}</span>
-                <p className="mt-2 text-sm font-semibold text-gray-800">{n.name}</p>
-              </button>
-            ))}
-          </div>
-
-          {/* Voice cloning option */}
-          <div
-            className={`rounded-2xl border-2 p-5 transition-all ${
-              narrator === "custom"
-                ? "border-indigo-500 bg-indigo-50 shadow-lg"
-                : "border-gray-200 bg-white hover:border-indigo-300 hover:shadow-md"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-semibold text-gray-800 flex items-center gap-2">
-                  <span className="text-2xl">{"🎙️"}</span>
-                  Use Your Own Voice
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  Record about 1 minute of reading and hear the story in your voice
-                </p>
-              </div>
-
-              {clonedVoiceId ? (
-                <div className="flex items-center gap-2 text-sm text-green-600 font-medium">
-                  <span>{"✓"}</span> Voice ready!
-                </div>
-              ) : cloning ? (
-                <div className="flex items-center gap-2 text-sm text-indigo-500">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-300 border-t-indigo-600" />
-                  Cloning...
-                </div>
-              ) : recording ? (
-                <button
-                  onClick={stopRecordingAndClone}
-                  className="rounded-full bg-red-500 px-4 py-2 text-sm font-bold text-white hover:bg-red-600 transition-all flex items-center gap-2"
-                >
-                  <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
-                  Stop & Clone
-                </button>
-              ) : (
-                <button
-                  onClick={startRecording}
-                  className="rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-2 text-sm font-bold text-white hover:shadow-lg transition-all"
-                >
-                  Start Recording
-                </button>
-              )}
-            </div>
-
-            {recording && (
-              <div className="mt-3 rounded-lg bg-red-50 border border-red-200 p-3">
-                <p className="text-sm text-red-700 font-medium flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-                  Recording... Read this aloud at a natural pace:
-                </p>
-                <p className="text-sm text-red-600 mt-2 italic leading-relaxed">
-                  &ldquo;The sun set over the mountains, painting the sky in brilliant shades of orange
-                  and purple. A cool breeze carried the scent of pine trees through the valley below.
-                  In the distance, a river sparkled like a ribbon of silver, winding its way through
-                  the thick green forest. Birds sang their evening songs as the first stars began to
-                  appear in the darkening sky above.
-
-                  Down by the river, a family of deer stepped carefully out of the trees to drink
-                  the cool, clear water. The smallest fawn looked up at the sky with wide, curious eyes,
-                  as if wondering where all the colors came from. A gentle owl hooted from a nearby branch,
-                  watching over the forest as night slowly arrived.
-
-                  Somewhere far away, a train whistle echoed through the hills, carrying travelers
-                  to places they had only dreamed about. The world felt peaceful and full of wonder,
-                  as if every creature and every star had found exactly where it was meant to be.&rdquo;
-                </p>
-              </div>
-            )}
-
-            {cloneError && (
-              <p className="mt-2 text-sm text-red-600">{cloneError}</p>
-            )}
-          </div>
-        </div>
-
-        {/* Start button */}
-        <button
-          onClick={handleStart}
-          disabled={!canStart}
-          className={`w-full rounded-full py-4 text-lg font-bold transition-all ${
-            canStart
-              ? "bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg hover:shadow-xl hover:scale-[1.01]"
-              : "bg-gray-200 text-gray-400 cursor-not-allowed"
-          }`}
-        >
-          Start Your Adventure
-        </button>
-
-        {/* Demo mode toggle */}
-        <div className="flex items-center justify-center gap-3">
-          <button
-            onClick={() => setDemoMode(!demoMode)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              demoMode ? "bg-indigo-500" : "bg-gray-300"
-            }`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                demoMode ? "translate-x-6" : "translate-x-1"
-              }`}
-            />
-          </button>
-          <span className="text-sm text-gray-500">
-            {demoMode ? "Demo mode (hardcoded, no credits)" : "Live mode (Gemini generation)"}
-          </span>
-        </div>
+        )}
       </div>
+      <p className="text-center text-[20px] md:text-[22px]" style={{ fontFamily: "var(--font-abeezee), sans-serif", color: selected ? "#000" : "#585858", fontWeight: selected ? 600 : 400 }}>
+        {narrator.name}
+      </p>
+    </button>
+  );
+}
+
+function LibraryCard({ item, disabled, onSelect }: { item: LibraryItem; disabled?: boolean; onSelect: () => void }) {
+  return (
+    <button
+      onClick={onSelect}
+      disabled={disabled}
+      className="group flex aspect-[595/842] w-full flex-col items-center justify-center gap-6 overflow-hidden rounded-[16px] bg-[#fef9f3] px-6 py-4 shadow-[2px_2px_20px_rgba(0,0,0,0.1)] transition-transform hover:scale-[1.02] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+    >
+      {item.isCreate ? (
+        <div className="flex size-[112px] items-center justify-center rounded-full bg-[#f09237] shadow-[2px_2px_20px_rgba(0,0,0,0.15)] md:size-[128px]">
+          <SparkleIcon />
+        </div>
+      ) : (
+        <span className="text-[44px] leading-none md:text-[48px]">{item.emoji}</span>
+      )}
+      <p className="text-center text-[20px] leading-[1.3] text-black md:text-[24px]" style={{ fontFamily: "var(--font-abeezee), sans-serif" }}>
+        {item.title}
+      </p>
+    </button>
+  );
+}
+
+function DecorLeaf({ src, size, rotate, className = "" }: { src: string; size: number; rotate: number; className?: string }) {
+  return (
+    <div className={`pointer-events-none absolute ${className}`} style={{ width: size, height: size, transform: `rotate(${rotate}deg)` }}>
+      <Image src={src} alt="" fill sizes="100px" className="object-contain" />
+    </div>
+  );
+}
+
+function MicIcon() {
+  return (
+    <div className="relative size-10 overflow-hidden md:size-11">
+      <div className="absolute inset-[4.17%_33.33%_33.33%_33.33%]"><img src="/figma/landing/mic-1.svg" alt="" className="size-full" /></div>
+      <div className="absolute inset-[37.5%_16.67%_16.67%_16.67%]"><img src="/figma/landing/mic-2.svg" alt="" className="size-full" /></div>
+      <div className="absolute bottom-[4.17%] left-[45.83%] right-[45.83%] top-3/4"><img src="/figma/landing/mic-3.svg" alt="" className="size-full" /></div>
+    </div>
+  );
+}
+
+function SparkleIcon() {
+  return (
+    <div className="relative size-10 overflow-hidden md:size-11">
+      <div className="absolute inset-[4.17%_4.16%_4.17%_4.17%]"><img src="/figma/landing/sparkle-1.svg" alt="" className="size-full" /></div>
+      <div className="absolute inset-[8.33%_12.5%_66.67%_79.17%]"><img src="/figma/landing/sparkle-2.svg" alt="" className="size-full" /></div>
+      <div className="absolute bottom-3/4 left-[70.83%] right-[4.17%] top-[16.67%]"><img src="/figma/landing/sparkle-3.svg" alt="" className="size-full" /></div>
+      <div className="absolute inset-[66.67%_79.17%_16.67%_12.5%]"><img src="/figma/landing/sparkle-4.svg" alt="" className="size-full" /></div>
+      <div className="absolute bottom-[20.83%] left-[8.33%] right-3/4 top-[70.83%]"><img src="/figma/landing/sparkle-5.svg" alt="" className="size-full" /></div>
     </div>
   );
 }
