@@ -103,6 +103,7 @@ Return ONLY valid JSON matching this exact structure:
         "question": "string",
         "option_a": {
           "label": "string (short, 5-8 words)",
+          "image_prompt": "string — 1-2 sentences describing a preview illustration for this choice path, same art style as the story, no characters needed, just the environment/concept that represents this path",
           "pages": [
             {
               "page_id": "p4a",
@@ -122,6 +123,7 @@ Return ONLY valid JSON matching this exact structure:
         },
         "option_b": {
           "label": "string (short, 5-8 words)",
+          "image_prompt": "string — 1-2 sentences describing a preview illustration for this choice path, same art style as the story, no characters needed, just the environment/concept that represents this path",
           "pages": [
             {
               "page_id": "p4b",

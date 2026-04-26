@@ -50,7 +50,7 @@ export default function StoryPage() {
       setGenerating(true);
       setError(null);
       try {
-        // Try cached story first — avoids regenerating pre-built demo stories
+        /*// Try cached story first — avoids regenerating pre-built demo stories
         const slug = topic.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
         const cached = await fetch(`/stories/${slug}/story.json`).catch(() => null);
         if (cached?.ok) {
@@ -63,7 +63,7 @@ export default function StoryPage() {
           }
           if (!cancelled) setStory(data);
           return;
-        }
+        }*/
 
         // Fall back to live generation
         const res = await fetch("/api/generate", {
@@ -316,18 +316,26 @@ export default function StoryPage() {
                 {currentPage.choice.question}
               </p>
               <div className="grid grid-cols-2 gap-4">
-                <button
-                  onClick={() => handleChoice("a")}
-                  className="rounded-xl bg-white border-2 border-indigo-200 p-4 text-center font-medium text-indigo-700 hover:border-indigo-500 hover:bg-indigo-50 transition-all hover:shadow-md"
-                >
-                  {currentPage.choice.option_a.label}
-                </button>
-                <button
-                  onClick={() => handleChoice("b")}
-                  className="rounded-xl bg-white border-2 border-indigo-200 p-4 text-center font-medium text-indigo-700 hover:border-indigo-500 hover:bg-indigo-50 transition-all hover:shadow-md"
-                >
-                  {currentPage.choice.option_b.label}
-                </button>
+                {([["a", currentPage.choice.option_a], ["b", currentPage.choice.option_b]] as const).map(
+                  ([opt, option]) => (
+                    <button
+                      key={opt}
+                      onClick={() => handleChoice(opt)}
+                      className="rounded-xl bg-white border-2 border-indigo-200 overflow-hidden text-center font-medium text-indigo-700 hover:border-indigo-500 hover:bg-indigo-50 transition-all hover:shadow-md"
+                    >
+                      {option.image_url ? (
+                        <img
+                          src={option.image_url}
+                          alt={option.label}
+                          className="w-full h-32 object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-32 bg-indigo-100" />
+                      )}
+                      <p className="p-3">{option.label}</p>
+                    </button>
+                  )
+                )}
               </div>
             </div>
           )}

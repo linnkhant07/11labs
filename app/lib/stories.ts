@@ -69,8 +69,8 @@ export interface Page {
   visual?: PageVisual;
   choice: null | {
     question: string;
-    option_a: { label: string; pages: Page[] };
-    option_b: { label: string; pages: Page[] };
+    option_a: { label: string; image_prompt: string; image_url: string; pages: Page[] };
+    option_b: { label: string; image_prompt: string; image_url: string; pages: Page[] };
   };
 }
 
@@ -135,6 +135,8 @@ export const TORNADO_STORY: Omit<Story, "narrator"> = {
         question: "The funnel cloud is getting closer to the ground. What should we learn about next?",
         option_a: {
           label: "How fast can a tornado spin?",
+          image_prompt: "",
+          image_url: "",
           pages: [
             {
               page_id: "p3a",
@@ -160,6 +162,8 @@ export const TORNADO_STORY: Omit<Story, "narrator"> = {
         },
         option_b: {
           label: "How do scientists track tornadoes?",
+          image_prompt: "",
+          image_url: "",
           pages: [
             {
               page_id: "p3b",

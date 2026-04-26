@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Page, Story } from "../../lib/stories";
 import { buildImagePrompt } from "../../lib/stories";
-import { collectAllPages } from "../../lib/generateUtils";
+import { collectAllPages, collectAllChoices } from "../../lib/generateUtils";
 import { generateStoryData, generateImage, type RawPage } from "../../lib/gemini";
 import { generateAudio, resolveVoiceId } from "../../lib/elevenlabs";
 import { saveStoryToDisk } from "../../lib/storyStorage";
@@ -21,10 +21,14 @@ function rawPageToPage(raw: RawPage): Page {
           question: raw.choice.question,
           option_a: {
             label: raw.choice.option_a.label,
+            image_prompt: raw.choice.option_a.image_prompt,
+            image_url: "",
             pages: raw.choice.option_a.pages.map(rawPageToPage),
           },
           option_b: {
             label: raw.choice.option_b.label,
+            image_prompt: raw.choice.option_b.image_prompt,
+            image_url: "",
             pages: raw.choice.option_b.pages.map(rawPageToPage),
           },
         }
@@ -53,18 +57,31 @@ export async function POST(req: NextRequest) {
     const pages = raw.pages.map(rawPageToPage);
     const allPages = collectAllPages(pages);
 
-    const [imageUrls, audioUrls] = await Promise.all([
+    const allChoices = collectAllChoices(pages);
+
+    const [imageUrls, audioUrls, choiceImageUrls] = await Promise.all([
       Promise.all(
         allPages.map((p) =>
           generateImage(buildImagePrompt(p, raw.style_guide, raw.characters))
         )
       ),
       Promise.all(allPages.map((p) => generateAudio(p.narration, voiceId))),
+      Promise.all(
+        allChoices.flatMap((c) => [
+          generateImage(c.option_a.image_prompt),
+          generateImage(c.option_b.image_prompt),
+        ])
+      ),
     ]);
 
     allPages.forEach((page, i) => {
       page.image_url = imageUrls[i];
       page.audio_url = audioUrls[i];
+    });
+
+    allChoices.forEach((choice, i) => {
+      choice.option_a.image_url = choiceImageUrls[i * 2];
+      choice.option_b.image_url = choiceImageUrls[i * 2 + 1];
     });
 
     const story: Story = {

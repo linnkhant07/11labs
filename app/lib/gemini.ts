@@ -13,8 +13,8 @@ export interface RawPage {
   visual?: PageVisual;
   choice?: {
     question: string;
-    option_a: { label: string; pages: RawPage[] };
-    option_b: { label: string; pages: RawPage[] };
+    option_a: { label: string; image_prompt: string; pages: RawPage[] };
+    option_b: { label: string; image_prompt: string; pages: RawPage[] };
   };
 }
 
