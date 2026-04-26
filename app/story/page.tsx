@@ -315,10 +315,16 @@ export default function StoryPage() {
           </div>
           <button
             onClick={() => { document.querySelector<HTMLButtonElement>("[data-narrator-chat-trigger]")?.click(); }}
-            className="flex items-center justify-center gap-4 rounded-[48px] bg-[#f09237] px-8 py-4 shadow-[2px_8px_0px_0px_#db6c00,2px_2px_20px_rgba(0,0,0,0.1)] transition-transform hover:scale-[1.03] active:translate-y-[2px] active:shadow-[2px_4px_0px_0px_#db6c00,2px_2px_20px_rgba(0,0,0,0.1)] md:gap-6 md:px-12 md:py-[26px]"
+            className={`flex items-center justify-center gap-4 rounded-[48px] px-8 py-4 transition-transform hover:scale-[1.03] active:translate-y-[2px] md:gap-6 md:px-12 md:py-[26px] ${
+              chatActive
+                ? "bg-red-500 shadow-[2px_8px_0px_0px_#b91c1c,2px_2px_20px_rgba(0,0,0,0.1)] active:shadow-[2px_4px_0px_0px_#b91c1c,2px_2px_20px_rgba(0,0,0,0.1)]"
+                : "bg-[#f09237] shadow-[2px_8px_0px_0px_#db6c00,2px_2px_20px_rgba(0,0,0,0.1)] active:shadow-[2px_4px_0px_0px_#db6c00,2px_2px_20px_rgba(0,0,0,0.1)]"
+            }`}
           >
             <MicIcon />
-            <span className="font-grandstander text-[20px] font-medium text-[#fef9f3] md:text-[26px]">Talk to {narrator.short}</span>
+            <span className="font-grandstander text-[20px] font-medium text-[#fef9f3] md:text-[26px]">
+              {chatActive ? `Stop ${narrator.short}` : `Talk to ${narrator.short}`}
+            </span>
           </button>
         </header>
 
@@ -355,9 +361,6 @@ export default function StoryPage() {
                   <p className="px-8 text-center text-sm font-medium italic text-white/70">{currentPage.image_prompt}</p>
                 </div>
               )}
-              <div className="pointer-events-none absolute left-4 top-4 flex items-center justify-center rounded-full bg-[#f09237] p-3 shadow-[0px_0px_10px_#f09237] md:left-6 md:top-6 md:p-4">
-                <SearchIcon />
-              </div>
             </div>
           </div>
 
@@ -388,9 +391,15 @@ export default function StoryPage() {
                 <PlayIcon />
               )}
             </button>
-            <button onClick={isLastPage ? handleRestart : handleNext} disabled={!!needsChoice} aria-label={isLastPage ? "Restart" : "Next page"} className="flex size-16 items-center justify-center rounded-full border border-[#fee8d3] bg-[#fee8d3] shadow-[2px_2px_5px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 disabled:opacity-40 md:size-20">
-              <ArrowRightLarge />
-            </button>
+            {isLastPage ? (
+              <a href="/" aria-label="Go home" className="flex size-16 items-center justify-center rounded-full bg-[#f09237] shadow-[2px_2px_10px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 md:size-20">
+                <HomeIcon />
+              </a>
+            ) : (
+              <button onClick={handleNext} disabled={!!needsChoice} aria-label="Next page" className="flex size-16 items-center justify-center rounded-full border border-[#fee8d3] bg-[#fee8d3] shadow-[2px_2px_5px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 disabled:opacity-40 md:size-20">
+                <ArrowRightLarge />
+              </button>
+            )}
           </div>
 
           {/* Choice UI */}
@@ -480,55 +489,51 @@ function MicIconLarge() {
 
 function ArrowLeftSmall() {
   return (
-    <div className="relative size-7 overflow-hidden md:size-8">
-      <div className="absolute inset-[16.67%_45.83%_16.67%_16.67%]"><img src="/figma/category/arrow-1.svg" alt="" className="size-full" style={{ filter: "grayscale(100%) brightness(0.6)" }} /></div>
-      <div className="absolute inset-[45.83%_16.67%]"><img src="/figma/category/arrow-2.svg" alt="" className="size-full" style={{ filter: "grayscale(100%) brightness(0.6)" }} /></div>
-    </div>
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="md:size-8">
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
   );
 }
 
 function ArrowRightSmall() {
   return (
-    <div className="relative h-7 w-6 overflow-hidden md:h-8 md:w-7">
-      <div className="absolute inset-[45.83%_16.67%]"><img src="/figma/storybook/arrow-right-2.svg" alt="" className="size-full" style={{ filter: "grayscale(100%) brightness(0.6)" }} /></div>
-      <div className="absolute inset-[16.67%_16.67%_16.67%_45.83%]"><img src="/figma/storybook/arrow-right-1.svg" alt="" className="size-full" style={{ filter: "grayscale(100%) brightness(0.6)" }} /></div>
-    </div>
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="md:size-8">
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
   );
 }
 
 function ArrowLeftLarge() {
   return (
-    <div className="relative size-9 overflow-hidden md:size-10">
-      <div className="absolute inset-[16.67%_45.83%_16.67%_16.67%]"><img src="/figma/category/arrow-1.svg" alt="" className="size-full" /></div>
-      <div className="absolute inset-[45.83%_16.67%]"><img src="/figma/category/arrow-2.svg" alt="" className="size-full" /></div>
-    </div>
+    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="md:size-10">
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
   );
 }
 
 function ArrowRightLarge() {
   return (
-    <div className="relative h-9 w-8 overflow-hidden md:h-10 md:w-9">
-      <div className="absolute inset-[45.83%_16.67%]"><img src="/figma/storybook/arrow-right-2.svg" alt="" className="size-full" /></div>
-      <div className="absolute inset-[16.67%_16.67%_16.67%_45.83%]"><img src="/figma/storybook/arrow-right-1.svg" alt="" className="size-full" /></div>
-    </div>
+    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#f09237" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="md:size-10">
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
   );
 }
 
-function SearchIcon() {
+function HomeIcon() {
   return (
-    <div className="relative size-7 overflow-hidden md:size-9">
-      <div className="absolute inset-[8.33%_16.67%_16.67%_8.33%]"><img src="/figma/storybook/search-1.svg" alt="" className="size-full" /></div>
-      <div className="absolute inset-[65.42%_8.33%_8.33%_65.42%]"><img src="/figma/storybook/search-2.svg" alt="" className="size-full" /></div>
-    </div>
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="md:size-10">
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <polyline points="9 22 9 12 15 12 15 22" />
+    </svg>
   );
 }
 
 function PauseIcon() {
   return (
-    <div className="relative size-8 overflow-hidden md:size-10">
-      <div className="absolute inset-[12.5%_54.17%_12.5%_20.83%]"><img src="/figma/storybook/pause-bar.svg" alt="" className="size-full" /></div>
-      <div className="absolute inset-[12.5%_20.83%_12.5%_54.17%]"><img src="/figma/storybook/pause-bar.svg" alt="" className="size-full" /></div>
-    </div>
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="md:size-10">
+      <rect x="9" y="7" width="5" height="18" rx="1.5" fill="white" />
+      <rect x="18" y="7" width="5" height="18" rx="1.5" fill="white" />
+    </svg>
   );
 }
 
