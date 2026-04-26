@@ -6,9 +6,18 @@ import { useSearchParams } from "next/navigation";
 import { getReadingOrder, TORNADO_STORY, PYRAMIDS_STORY, type Story, type Page } from "../lib/stories";
 import { NARRATORS, isNarratorId, getVoiceId, type NarratorId, type NarratorInfo } from "../lib/narrators";
 import { topicToSlug } from "../lib/generateUtils";
-import { NarratorChat } from "../components/narrator-chat";
+import dynamic from "next/dynamic";
 import { useNarrator } from "../components/narrator-context";
-import { MagnifyingGlass } from "../components/magnifying-glass";
+
+const NarratorChat = dynamic(
+  () => import("../components/narrator-chat").then((m) => m.NarratorChat),
+  { ssr: false }
+);
+
+const MagnifyingGlass = dynamic(
+  () => import("../components/magnifying-glass").then((m) => m.MagnifyingGlass),
+  { ssr: false }
+);
 
 const PLACEHOLDER_GRADIENTS = [
   "from-sky-300 to-cyan-500",
