@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 
 interface MagnifyingGlassProps {
   imageUrl: string;
@@ -27,6 +27,19 @@ export function MagnifyingGlass({
   const [explanation, setExplanation] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Reset when page changes
+  useEffect(() => {
+    setPosition(null);
+    setDragging(false);
+    setDragPos(null);
+    setBubble(null);
+    setExplanation("");
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+  }, [imageUrl, narration]);
 
   const getRelativePosition = useCallback(
     (clientX: number, clientY: number): DropPoint | null => {
@@ -219,7 +232,7 @@ export function MagnifyingGlass({
           onClick={handleDismiss}
         >
           <div className="rounded-xl bg-white shadow-lg border-2 border-indigo-200 p-3 cursor-pointer hover:bg-gray-50 transition-all">
-            <p className="text-sm text-gray-700 leading-relaxed">{explanation}</p>
+            <p className="text-sm text-gray-700 leading-relaxed">{explanation.replace(/\*{1,3}(.*?)\*{1,3}/g, "$1")}</p>
             <p className="text-xs text-gray-400 mt-1">Tap to dismiss</p>
           </div>
         </div>

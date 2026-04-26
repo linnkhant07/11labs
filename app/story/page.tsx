@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { getReadingOrder, TORNADO_STORY, PYRAMIDS_STORY, type Story, type Page } from "../lib/stories";
+import { topicToSlug } from "../lib/generateUtils";
 import { NarratorChat } from "../components/narrator-chat";
 import { MagnifyingGlass } from "../components/magnifying-glass";
 
@@ -47,6 +48,20 @@ function getGradient(index: number) {
   return PLACEHOLDER_GRADIENTS[index % PLACEHOLDER_GRADIENTS.length];
 }
 
+function stripMarkdown(text: string): string {
+  return text.replace(/\*{1,3}(.*?)\*{1,3}/g, "$1");
+}
+
+function clearPageAudio(pages: Page[]) {
+  for (const p of pages) {
+    p.audio_url = "";
+    if (p.choice) {
+      clearPageAudio(p.choice.option_a.pages);
+      clearPageAudio(p.choice.option_b.pages);
+    }
+  }
+}
+
 export default function StoryPage() {
   const searchParams = useSearchParams();
   const narratorId = searchParams.get("narrator") ?? "mouse";
@@ -79,30 +94,50 @@ export default function StoryPage() {
   const narratorName = narratorId === "custom" ? "Your narrator" : (NARRATOR_NAMES[narratorId] ?? NARRATOR_NAMES.mouse);
   const voiceId = customVoiceId ?? VOICE_IDS[narratorId] ?? VOICE_IDS.mouse;
 
-  // --- Story generation ---
+  // --- Story generation (try cache first, then generate) ---
   useEffect(() => {
     if (isDemo) return;
-    let cancelled = false;
+    const controller = new AbortController();
     async function generate() {
       setGenerating(true);
       setError(null);
       try {
+        // Check for cached story first
+        const slug = topicToSlug(topic);
+        const cached = await fetch(`/stories/${slug}/story.json`, { signal: controller.signal });
+        if (cached.ok) {
+          const data: Story = await cached.json();
+          // If cached narrator doesn't match user's pick, clear audio so it regenerates on-demand with the right voice
+          const cachedVoice = data.narrator?.voice_id;
+          if (cachedVoice && cachedVoice !== voiceId) {
+            console.log(`[story] Cached story voice mismatch (cached: ${data.narrator.character}, selected: ${narratorId}) — audio will regenerate on-demand`);
+            clearPageAudio(data.pages);
+          }
+          console.log(`[story] Loaded cached story for "${topic}"`);
+          setStory(data);
+          return;
+        }
+
+        // No cache — generate from scratch
+        console.log(`[story] No cache for "${topic}", generating...`);
         const res = await fetch("/api/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ topic, narrator: narratorId }),
+          signal: controller.signal,
         });
         if (!res.ok) throw new Error("Failed to generate story");
         const data: Story = await res.json();
-        if (!cancelled) setStory(data);
+        setStory(data);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Something went wrong");
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setError(err instanceof Error ? err.message : "Something went wrong");
       } finally {
-        if (!cancelled) setGenerating(false);
+        if (!controller.signal.aborted) setGenerating(false);
       }
     }
     generate();
-    return () => { cancelled = true; };
+    return () => { controller.abort(); };
   }, [topic, narratorId]);
 
   const pages = useMemo(
@@ -317,7 +352,7 @@ export default function StoryPage() {
           {/* Narration text */}
           <div className="rounded-2xl bg-white p-6 md:p-8 shadow-sm border border-indigo-100">
             <p className="text-lg leading-relaxed text-gray-700">
-              {currentPage.narration}
+              {stripMarkdown(currentPage.narration)}
             </p>
           </div>
 
@@ -389,15 +424,29 @@ export default function StoryPage() {
               <div className="grid grid-cols-2 gap-4">
                 <button
                   onClick={() => handleChoice("a")}
-                  className="rounded-xl bg-white border-2 border-indigo-200 p-4 text-center font-medium text-indigo-700 hover:border-indigo-500 hover:bg-indigo-50 transition-all hover:shadow-md"
+                  className="rounded-xl bg-white border-2 border-indigo-200 overflow-hidden text-center font-medium text-indigo-700 hover:border-indigo-500 hover:bg-indigo-50 transition-all hover:shadow-md"
                 >
-                  {currentPage.choice.option_a.label}
+                  {currentPage.choice.option_a.image_url && (
+                    <img
+                      src={currentPage.choice.option_a.image_url}
+                      alt={currentPage.choice.option_a.label}
+                      className="w-full h-32 object-cover"
+                    />
+                  )}
+                  <span className="block p-4">{currentPage.choice.option_a.label}</span>
                 </button>
                 <button
                   onClick={() => handleChoice("b")}
-                  className="rounded-xl bg-white border-2 border-indigo-200 p-4 text-center font-medium text-indigo-700 hover:border-indigo-500 hover:bg-indigo-50 transition-all hover:shadow-md"
+                  className="rounded-xl bg-white border-2 border-indigo-200 overflow-hidden text-center font-medium text-indigo-700 hover:border-indigo-500 hover:bg-indigo-50 transition-all hover:shadow-md"
                 >
-                  {currentPage.choice.option_b.label}
+                  {currentPage.choice.option_b.image_url && (
+                    <img
+                      src={currentPage.choice.option_b.image_url}
+                      alt={currentPage.choice.option_b.label}
+                      className="w-full h-32 object-cover"
+                    />
+                  )}
+                  <span className="block p-4">{currentPage.choice.option_b.label}</span>
                 </button>
               </div>
             </div>
