@@ -6,7 +6,7 @@ interface MagnifyingGlassProps {
   imageUrl: string;
   topic: string;
   narration: string;
-  narrator: string;
+  voiceId: string;
 }
 
 interface DropPoint {
@@ -18,7 +18,7 @@ export function MagnifyingGlass({
   imageUrl,
   topic,
   narration,
-  narrator,
+  voiceId,
 }: MagnifyingGlassProps) {
   const [position, setPosition] = useState<DropPoint | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -105,14 +105,15 @@ export function MagnifyingGlass({
         }),
       });
       const data = await res.json();
-      setExplanation(data.explanation);
+      const cleaned = (data.explanation ?? "").replace(/\*{1,3}(.*?)\*{1,3}/g, "$1");
+      setExplanation(cleaned);
       setBubble("result");
 
       // Speak the explanation
       const audioRes = await fetch("/api/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: data.explanation, narrator }),
+        body: JSON.stringify({ text: cleaned, voiceId }),
       });
       const blob = await audioRes.blob();
       const url = URL.createObjectURL(blob);
@@ -127,7 +128,7 @@ export function MagnifyingGlass({
       setExplanation("Oops! I couldn't figure that out. Try again!");
       setBubble("result");
     }
-  }, [position, imageUrl, topic, narration, narrator]);
+  }, [position, imageUrl, topic, narration, voiceId]);
 
   const handleDismiss = useCallback(() => {
     setPosition(null);
@@ -232,7 +233,7 @@ export function MagnifyingGlass({
           onClick={handleDismiss}
         >
           <div className="rounded-xl bg-white shadow-lg border-2 border-indigo-200 p-3 cursor-pointer hover:bg-gray-50 transition-all">
-            <p className="text-sm text-gray-700 leading-relaxed">{explanation.replace(/\*{1,3}(.*?)\*{1,3}/g, "$1")}</p>
+            <p className="text-sm text-gray-700 leading-relaxed">{explanation}</p>
             <p className="text-xs text-gray-400 mt-1">Tap to dismiss</p>
           </div>
         </div>
