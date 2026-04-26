@@ -295,55 +295,55 @@ export default function StoryPage() {
   const totalPages = pages.length;
 
   return (
-    <main className="relative min-h-screen w-full overflow-hidden bg-gradient-to-b from-[#fcebdc] to-white">
+    <main className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#fcebdc] to-white">
       {/* Decorative leaves */}
       <DecorLeaf src="/figma/landing/leaf-3.svg" size={78} rotate={18.88} className="left-[2%] top-[48%] hidden md:block" />
       <DecorLeaf src="/figma/landing/leaf-1.svg" size={91} rotate={55.56} className="right-[3%] top-[5%] hidden md:block" />
       <DecorLeaf src="/figma/landing/leaf-2.svg" size={63} rotate={-72.55} className="right-[8%] top-[12%] hidden md:block" />
 
-      <div className="relative mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-6 py-10 md:px-16 md:py-20 md:gap-14 lg:px-24">
+      <div className="relative mx-auto flex w-full max-w-[880px] flex-col gap-5 px-6 py-5 md:px-8 md:py-8 md:gap-6">
         {/* Header */}
         <header className="flex w-full flex-wrap items-center justify-between gap-6">
-          <div className="flex items-center gap-6 md:gap-12">
+          <div className="flex items-center gap-4 md:gap-8">
             <NarratorBadge narrator={narrator} />
-            <div className="flex flex-col gap-2 md:gap-3">
-              <h1 className="font-chelsea text-[28px] leading-tight text-black md:text-[44px]">{story.title}</h1>
-              <p className="text-[16px] text-[#585858] md:text-[24px]" style={{ fontFamily: "var(--font-abeezee), sans-serif" }}>
+            <div className="flex flex-col gap-1 md:gap-2">
+              <h1 className="font-chelsea text-[18px] leading-tight text-black md:text-[22px]">{story.title}</h1>
+              <p className="text-[14px] text-[#585858] md:text-[17px]" style={{ fontFamily: "var(--font-abeezee), sans-serif" }}>
                 Narrator: {narrator.name}
               </p>
             </div>
           </div>
           <button
             onClick={() => { document.querySelector<HTMLButtonElement>("[data-narrator-chat-trigger]")?.click(); }}
-            className={`flex items-center justify-center gap-4 rounded-[48px] px-8 py-4 transition-transform hover:scale-[1.03] active:translate-y-[2px] md:gap-6 md:px-12 md:py-[26px] ${
+            className={`flex items-center justify-center gap-2 rounded-[48px] px-4 py-2.5 transition-transform hover:scale-[1.03] active:translate-y-[2px] md:gap-2 md:px-5 md:py-3 ${
               chatActive
-                ? "bg-red-500 shadow-[2px_8px_0px_0px_#b91c1c,2px_2px_20px_rgba(0,0,0,0.1)] active:shadow-[2px_4px_0px_0px_#b91c1c,2px_2px_20px_rgba(0,0,0,0.1)]"
-                : "bg-[#f09237] shadow-[2px_8px_0px_0px_#db6c00,2px_2px_20px_rgba(0,0,0,0.1)] active:shadow-[2px_4px_0px_0px_#db6c00,2px_2px_20px_rgba(0,0,0,0.1)]"
+                ? "bg-red-500 shadow-[2px_4px_0px_0px_#b91c1c,2px_2px_20px_rgba(0,0,0,0.1)] active:shadow-[2px_4px_0px_0px_#b91c1c,2px_2px_20px_rgba(0,0,0,0.1)]"
+                : "bg-[#f09237] shadow-[2px_4px_0px_0px_#db6c00,2px_2px_20px_rgba(0,0,0,0.1)] active:shadow-[2px_4px_0px_0px_#db6c00,2px_2px_20px_rgba(0,0,0,0.1)]"
             }`}
           >
             <MicIcon />
-            <span className="font-grandstander text-[20px] font-medium text-[#fef9f3] md:text-[26px]">
+            <span className="font-grandstander text-[14px] font-medium text-[#fef9f3] md:text-[14px]">
               {chatActive ? `Stop ${narrator.short}` : `Talk to ${narrator.short}`}
             </span>
           </button>
         </header>
 
         {/* Story card */}
-        <section className="flex w-full flex-col items-center gap-8 rounded-[24px] bg-white p-6 shadow-[2px_2px_5px_rgba(0,0,0,0.1)] md:gap-12 md:px-10 md:py-[60px]">
+        <section className="flex w-full flex-col items-center gap-4 rounded-[24px] bg-white p-5 shadow-[2px_2px_5px_rgba(0,0,0,0.1)] md:gap-6 md:px-8 md:py-8">
           {/* Page indicator + progress */}
-          <div className="flex w-full flex-col items-center gap-6 md:gap-8">
-            <div className="flex items-center justify-center gap-8 md:gap-10">
+          <div className="flex w-full flex-col items-center gap-3 md:gap-4">
+            <div className="flex items-center justify-center gap-6 md:gap-8">
               <button onClick={handlePrev} disabled={pageIndex === 0} aria-label="Previous page" className="transition-transform hover:scale-110 disabled:opacity-30">
                 <ArrowLeftSmall />
               </button>
-              <span className="font-grandstander text-[22px] font-medium text-black md:text-[28px]">Page {pageIndex + 1} of {totalPages}</span>
+              <span className="font-grandstander text-[13px] font-medium text-black md:text-[15px]">Page {pageIndex + 1} of {totalPages}</span>
               <button onClick={handleNext} disabled={pageIndex === totalPages - 1 || !!needsChoice} aria-label="Next page" className="transition-transform hover:scale-110 disabled:opacity-30">
                 <ArrowRightSmall />
               </button>
             </div>
             <div className="flex w-full max-w-full gap-3">
               {Array.from({ length: totalPages }).map((_, i) => (
-                <div key={i} className="h-[6px] flex-1 rounded-full transition-colors" style={{ backgroundColor: i <= pageIndex ? "#f09237" : "#eaeaea" }} />
+                <div key={i} className="h-[3px] flex-1 rounded-full transition-colors" style={{ backgroundColor: i <= pageIndex ? "#f09237" : "#eaeaea" }} />
               ))}
             </div>
           </div>
@@ -365,7 +365,7 @@ export default function StoryPage() {
           </div>
 
           {/* Narration text */}
-          <p className="w-full text-[18px] leading-[1.7] text-black md:text-[24px] md:leading-[2]" style={{ fontFamily: "var(--font-abeezee), sans-serif" }}>
+          <p className="w-full text-[14px] leading-[1.65] text-black md:text-[17px] md:leading-[1.8]" style={{ fontFamily: "var(--font-abeezee), sans-serif" }}>
             {stripMarkdown(currentPage.narration)}
           </p>
 
@@ -379,12 +379,12 @@ export default function StoryPage() {
 
           {/* Bottom controls */}
           <div className="relative flex w-full items-center justify-between">
-            <button onClick={handlePrev} disabled={pageIndex === 0} aria-label="Previous page" className="flex size-16 items-center justify-center rounded-full border border-[#eaeaea] bg-[#eaeaea] shadow-[2px_2px_5px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 disabled:opacity-40 md:size-20">
+            <button onClick={handlePrev} disabled={pageIndex === 0} aria-label="Previous page" className="flex size-12 items-center justify-center rounded-full border border-[#eaeaea] bg-[#eaeaea] shadow-[2px_2px_5px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 disabled:opacity-40 md:size-14">
               <ArrowLeftLarge />
             </button>
-            <button onClick={handleSpeak} disabled={loading} aria-label={playing ? "Pause" : "Play"} className="flex size-16 items-center justify-center rounded-full bg-[#f09237] shadow-[2px_2px_10px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 disabled:opacity-60 md:size-20">
+            <button onClick={handleSpeak} disabled={loading} aria-label={playing ? "Pause" : "Play"} className="flex size-12 items-center justify-center rounded-full bg-[#f09237] shadow-[2px_2px_10px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 disabled:opacity-60 md:size-14">
               {loading ? (
-                <span className="size-6 animate-spin rounded-full border-2 border-white/40 border-t-white md:size-8" />
+                <span className="size-5 animate-spin rounded-full border-2 border-white/40 border-t-white md:size-6" />
               ) : playing ? (
                 <PauseIcon />
               ) : (
@@ -392,11 +392,11 @@ export default function StoryPage() {
               )}
             </button>
             {isLastPage ? (
-              <a href="/" aria-label="Go home" className="flex size-16 items-center justify-center rounded-full bg-[#f09237] shadow-[2px_2px_10px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 md:size-20">
+              <a href="/" aria-label="Go home" className="flex size-12 items-center justify-center rounded-full bg-[#f09237] shadow-[2px_2px_10px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 md:size-14">
                 <HomeIcon />
               </a>
             ) : (
-              <button onClick={handleNext} disabled={!!needsChoice} aria-label="Next page" className="flex size-16 items-center justify-center rounded-full border border-[#fee8d3] bg-[#fee8d3] shadow-[2px_2px_5px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 disabled:opacity-40 md:size-20">
+              <button onClick={handleNext} disabled={!!needsChoice} aria-label="Next page" className="flex size-12 items-center justify-center rounded-full border border-[#fee8d3] bg-[#fee8d3] shadow-[2px_2px_5px_rgba(0,0,0,0.1)] transition-transform hover:scale-105 disabled:opacity-40 md:size-14">
                 <ArrowRightLarge />
               </button>
             )}
@@ -405,25 +405,25 @@ export default function StoryPage() {
           {/* Choice UI */}
           {needsChoice && currentPage.choice && (
             <div className="w-full space-y-4 rounded-2xl border-2 border-[#fee8d3] bg-[#fef9f3] p-6">
-              <p className="text-center font-grandstander text-[18px] font-medium text-[#f29337] md:text-[22px]">{currentPage.choice.question}</p>
+              <p className="text-center font-grandstander text-[14px] font-medium text-[#f29337] md:text-[17px]">{currentPage.choice.question}</p>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <button
                   onClick={() => handleChoice("a")}
-                  className="overflow-hidden rounded-xl border-2 border-[#cfcfcf] bg-white text-center text-[16px] font-semibold text-black shadow-[2px_3px_0px_0px_#cfcfcf] transition-all hover:scale-[1.02] hover:border-[#f29337] hover:shadow-[2px_3px_0px_0px_#f29337] md:text-[18px]"
+                  className="overflow-hidden rounded-xl border-2 border-[#cfcfcf] bg-white text-center text-[13px] font-semibold text-black shadow-[2px_3px_0px_0px_#cfcfcf] transition-all hover:scale-[1.02] hover:border-[#f29337] hover:shadow-[2px_3px_0px_0px_#f29337] md:text-[15px]"
                   style={{ fontFamily: "var(--font-nunito), sans-serif" }}
                 >
                   {currentPage.choice.option_a.image_url && (
-                    <img src={currentPage.choice.option_a.image_url} alt={currentPage.choice.option_a.label} className="w-full h-32 object-cover" />
+                    <img src={currentPage.choice.option_a.image_url} alt={currentPage.choice.option_a.label} className="w-full h-24 object-cover" />
                   )}
                   <span className="block p-4">{currentPage.choice.option_a.label}</span>
                 </button>
                 <button
                   onClick={() => handleChoice("b")}
-                  className="overflow-hidden rounded-xl border-2 border-[#cfcfcf] bg-white text-center text-[16px] font-semibold text-black shadow-[2px_3px_0px_0px_#cfcfcf] transition-all hover:scale-[1.02] hover:border-[#f29337] hover:shadow-[2px_3px_0px_0px_#f29337] md:text-[18px]"
+                  className="overflow-hidden rounded-xl border-2 border-[#cfcfcf] bg-white text-center text-[13px] font-semibold text-black shadow-[2px_3px_0px_0px_#cfcfcf] transition-all hover:scale-[1.02] hover:border-[#f29337] hover:shadow-[2px_3px_0px_0px_#f29337] md:text-[15px]"
                   style={{ fontFamily: "var(--font-nunito), sans-serif" }}
                 >
                   {currentPage.choice.option_b.image_url && (
-                    <img src={currentPage.choice.option_b.image_url} alt={currentPage.choice.option_b.label} className="w-full h-32 object-cover" />
+                    <img src={currentPage.choice.option_b.image_url} alt={currentPage.choice.option_b.label} className="w-full h-24 object-cover" />
                   )}
                   <span className="block p-4">{currentPage.choice.option_b.label}</span>
                 </button>
@@ -447,9 +447,9 @@ export default function StoryPage() {
 
 function NarratorBadge({ narrator }: { narrator: NarratorInfo }) {
   return (
-    <div className="flex size-[80px] items-center justify-center overflow-hidden rounded-full border border-[#f09237] shadow-[2px_2px_20px_0px_#f09237] md:size-[108px]" style={{ backgroundColor: narrator.bg }}>
+    <div className="flex size-[48px] items-center justify-center overflow-hidden rounded-full border border-[#f09237] shadow-[2px_2px_20px_0px_#f09237] md:size-[60px]" style={{ backgroundColor: narrator.bg }}>
       {narrator.image ? (
-        <div className="relative size-[64px] md:size-[88px]">
+        <div className="relative size-[38px] md:size-[48px]">
           <Image src={narrator.image} alt={narrator.name} fill sizes="108px" className="object-contain" />
         </div>
       ) : (
@@ -469,7 +469,7 @@ function DecorLeaf({ src, size, rotate, className = "" }: { src: string; size: n
 
 function MicIcon() {
   return (
-    <div className="relative size-6 overflow-hidden md:size-7">
+    <div className="relative size-3.5 overflow-hidden md:size-4.5">
       <div className="absolute inset-[4.17%_33.33%_33.33%_33.33%]"><img src="/figma/landing/mic-1.svg" alt="" className="size-full" /></div>
       <div className="absolute inset-[37.5%_16.67%_16.67%_16.67%]"><img src="/figma/landing/mic-2.svg" alt="" className="size-full" /></div>
       <div className="absolute bottom-[4.17%] left-[45.83%] right-[45.83%] top-3/4"><img src="/figma/landing/mic-3.svg" alt="" className="size-full" /></div>
@@ -489,7 +489,7 @@ function MicIconLarge() {
 
 function ArrowLeftSmall() {
   return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="md:size-8">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="md:size-5">
       <polyline points="15 18 9 12 15 6" />
     </svg>
   );
@@ -497,7 +497,7 @@ function ArrowLeftSmall() {
 
 function ArrowRightSmall() {
   return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="md:size-8">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="md:size-5">
       <polyline points="9 18 15 12 9 6" />
     </svg>
   );
@@ -505,7 +505,7 @@ function ArrowRightSmall() {
 
 function ArrowLeftLarge() {
   return (
-    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="md:size-10">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="md:size-7">
       <polyline points="15 18 9 12 15 6" />
     </svg>
   );
@@ -513,7 +513,7 @@ function ArrowLeftLarge() {
 
 function ArrowRightLarge() {
   return (
-    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#f09237" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="md:size-10">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f09237" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="md:size-7">
       <polyline points="9 18 15 12 9 6" />
     </svg>
   );
@@ -521,7 +521,7 @@ function ArrowRightLarge() {
 
 function HomeIcon() {
   return (
-    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="md:size-10">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="md:size-7">
       <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
       <polyline points="9 22 9 12 15 12 15 22" />
     </svg>
@@ -530,7 +530,7 @@ function HomeIcon() {
 
 function PauseIcon() {
   return (
-    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="md:size-10">
+    <svg width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="md:size-7">
       <rect x="9" y="7" width="5" height="18" rx="1.5" fill="white" />
       <rect x="18" y="7" width="5" height="18" rx="1.5" fill="white" />
     </svg>
@@ -539,7 +539,7 @@ function PauseIcon() {
 
 function PlayIcon() {
   return (
-    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="md:size-10">
+    <svg width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="md:size-7">
       <path d="M9 6.5C9 5.67157 9.92143 5.18743 10.6055 5.65149L24.6055 15.1515C25.215 15.5651 25.215 16.4349 24.6055 16.8485L10.6055 26.3485C9.92143 26.8126 9 26.3284 9 25.5V6.5Z" fill="white" />
     </svg>
   );
