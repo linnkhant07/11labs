@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 
 type Topic = { id: string; label: string; emoji: string };
 
@@ -26,7 +26,15 @@ const HISTORY_TOPICS: Topic[] = [
   { id: "dinosaurs", label: "Dinosaurs", emoji: "\ud83e\udd95" },
 ];
 
-export default function ChooseTopic() {
+export default function ChooseTopicPage() {
+  return (
+    <Suspense fallback={null}>
+      <ChooseTopic />
+    </Suspense>
+  );
+}
+
+function ChooseTopic() {
   const router = useRouter();
   const params = useSearchParams();
   const narrator = params.get("narrator") ?? "fox";

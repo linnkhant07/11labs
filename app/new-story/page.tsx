@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
 type Category = {
   id: string;
@@ -14,7 +15,15 @@ const CATEGORIES: Category[] = [
   { id: "history", name: "History", emoji: "\ud83c\udfdb\ufe0f" },
 ];
 
-export default function NewStory() {
+export default function NewStoryPage() {
+  return (
+    <Suspense fallback={null}>
+      <NewStory />
+    </Suspense>
+  );
+}
+
+function NewStory() {
   const router = useRouter();
   const params = useSearchParams();
   const narrator = params.get("narrator") ?? "fox";
