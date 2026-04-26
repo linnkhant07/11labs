@@ -19,15 +19,6 @@ const PLACEHOLDER_GRADIENTS = [
   "from-rose-300 to-pink-500",
 ];
 
-const INACTIVITY_TIMEOUT = 30_000;
-
-const RE_ENGAGEMENT_PROMPTS = [
-  "Hey! Are you still with me? Want me to read that part again?",
-  "Still there? I was just thinking about something cool related to our story!",
-  "Hey friend! Did that last part make you curious about anything?",
-  "I'm still here! Want to keep going, or do you have a question?",
-  "Psst! Don't forget, you can ask me anything about the story!",
-];
 
 function getGradient(index: number) {
   return PLACEHOLDER_GRADIENTS[index % PLACEHOLDER_GRADIENTS.length];
@@ -79,11 +70,8 @@ export default function StoryPage() {
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const [hasFinishedReading, setHasFinishedReading] = useState(false);
-  const [nudgeText, setNudgeText] = useState<string | null>(null);
   const [chatActive, setChatActive] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const nudgeCount = useRef(0);
   const [activeWordIndex, setActiveWordIndex] = useState(-1);
   const rafRef = useRef<number | null>(null);
 
@@ -227,49 +215,6 @@ export default function StoryPage() {
     if (active) stopAudio();
   }, [stopAudio]);
 
-  // --- Inactivity re-engagement ---
-  const resetInactivityTimer = useCallback(() => {
-    setNudgeText(null);
-    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
-    inactivityTimer.current = setTimeout(() => {
-      const prompt = RE_ENGAGEMENT_PROMPTS[nudgeCount.current % RE_ENGAGEMENT_PROMPTS.length];
-      nudgeCount.current += 1;
-      setNudgeText(prompt);
-      fetch("/api/speak", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: prompt, narrator: narratorId, voiceId }),
-      })
-        .then((res) => res.blob())
-        .then((blob) => {
-          const url = URL.createObjectURL(blob);
-          const audio = new Audio(url);
-          audio.onended = () => URL.revokeObjectURL(url);
-          audio.play();
-        })
-        .catch(() => {});
-    }, INACTIVITY_TIMEOUT);
-  }, [narratorId, voiceId]);
-
-  useEffect(() => {
-    if (generating || !story) return;
-    resetInactivityTimer();
-    return () => { if (inactivityTimer.current) clearTimeout(inactivityTimer.current); };
-  }, [pageIndex, branchChoices, playing, generating, story, resetInactivityTimer]);
-
-  useEffect(() => {
-    if (generating || !story) return;
-    const reset = () => resetInactivityTimer();
-    window.addEventListener("click", reset);
-    window.addEventListener("keydown", reset);
-    window.addEventListener("touchstart", reset);
-    return () => {
-      window.removeEventListener("click", reset);
-      window.removeEventListener("keydown", reset);
-      window.removeEventListener("touchstart", reset);
-    };
-  }, [generating, story, resetInactivityTimer]);
-
   // --- Navigation ---
   function handleNext() { stopAudio(); setHasFinishedReading(false); setPageIndex((i) => Math.min(i + 1, pages.length - 1)); }
   function handlePrev() { stopAudio(); setHasFinishedReading(false); setPageIndex((i) => Math.max(i - 1, 0)); }
@@ -405,14 +350,6 @@ export default function StoryPage() {
               stripMarkdown(currentPage.narration)
             )}
           </p>
-
-          {/* Re-engagement nudge */}
-          {nudgeText && (
-            <div className="w-full cursor-pointer rounded-2xl border-2 border-[#fee8d3] bg-[#fef5ea] p-4 text-center transition-all hover:bg-[#fee8d3]" onClick={() => setNudgeText(null)}>
-              <p className="font-grandstander text-[16px] font-medium text-[#f09237]">{narrator.short}: &ldquo;{nudgeText}&rdquo;</p>
-              <p className="mt-1 font-grandstander text-[11px] text-[#c4a882]">Tap to dismiss</p>
-            </div>
-          )}
 
           {/* Bottom controls */}
           <div className="relative flex w-full items-center justify-between">
